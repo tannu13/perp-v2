@@ -1,11 +1,7 @@
 import { compare, hash } from "bcrypt";
 import db from "../db/connection";
 import { AppError } from "../errors/app-error";
-import {
-  ConflictError,
-  InvalidRequestError,
-  NotFoundError,
-} from "../errors/custom-errors";
+import { ConflictError, InvalidRequestError } from "../errors/custom-errors";
 import env from "../env";
 import { users } from "../db/schema";
 import { createToken } from "../utils/auth";
