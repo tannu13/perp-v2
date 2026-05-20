@@ -12,6 +12,7 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     username: varchar("username", { length: 255 }).notNull(),
     passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

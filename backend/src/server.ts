@@ -1,6 +1,14 @@
-import express, { type Request, type Response } from "express";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { pool } from "./db/connection";
 import helmet from "helmet";
+import { createControllers } from "./controllers";
+import { createRoutes } from "./routes";
+import { createServices } from "./services";
+import { AppError } from "./errors/app-error";
 
 const app = express();
 
@@ -29,6 +37,27 @@ app.get("/health", async (req: Request, res: Response) => {
     status: isHealthy ? "OK" : "ERROR",
     db: services.db,
     redis: "pending",
+  });
+});
+
+const services = createServices();
+const controllers = createControllers(services);
+const router = createRoutes(controllers);
+
+app.use(router.authRouter);
+
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof AppError && err.isOperational) {
+    return res.status(err.statusCode).json({
+      code: err.errorCode,
+      message: err.message,
+    });
+  }
+  console.error(err);
+  return res.status(500).json({
+    code: "INTERNAL_SERVER_ERROR",
+    message:
+      err instanceof Error ? err.message : "Something went wrong on our end.",
   });
 });
 
