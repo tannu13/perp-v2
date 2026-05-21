@@ -9,7 +9,8 @@ import {
 } from "../types/order-types";
 
 // register with the redis stream
-const STREAM = env.INCOMING_STREAM;
+const INCOMING_STREAM = env.INCOMING_STREAM;
+const OUTGOING_STREAM = env.OUTGOING_STREAM;
 const LISTENER_GROUP = env.LISTENER_GROUP;
 const LISTENER_GROUP_CONSUMER = env.LISTENER_GROUP_CONSUMER;
 
@@ -31,10 +32,7 @@ export const setupComms = async ({
   await Promise.all([listenerClient.connect(), senderClient.connect()]);
 
   try {
-    await listenerClient.xGroupCreate(STREAM, LISTENER_GROUP, "0", {
-      MKSTREAM: true,
-    });
-    await senderClient.xGroupCreate(STREAM, LISTENER_GROUP, "0", {
+    await listenerClient.xGroupCreate(INCOMING_STREAM, LISTENER_GROUP, "0", {
       MKSTREAM: true,
     });
   } catch (err: any) {
@@ -48,7 +46,7 @@ export const setupComms = async ({
     let start = "0-0";
     while (true) {
       const result = await listenerClient.xAutoClaim(
-        STREAM,
+        INCOMING_STREAM,
         LISTENER_GROUP,
         LISTENER_GROUP_CONSUMER,
         1000, // idle ms
@@ -75,7 +73,11 @@ export const setupComms = async ({
             message.message,
             rawResult.error,
           );
-          await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
           continue;
         }
 
@@ -93,22 +95,22 @@ export const setupComms = async ({
             message.message,
             rawResult.error,
           );
-          await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
           continue;
         }
 
         console.log("message:", message.id, result.data);
 
-        const { correlationId, responseStream, payload, type } = result.data;
+        const { correlationId, payload, type } = result.data;
         // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - td:: think more...
         const engineResponse = engineHandler({ payload, type });
-        await sendToResponseStream(
-          responseStream,
-          correlationId,
-          engineResponse,
-        );
+        await sendToResponseStream(correlationId, engineResponse);
 
-        await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+        await listenerClient.xAck(INCOMING_STREAM, LISTENER_GROUP, message.id);
       }
     }
   };
@@ -120,7 +122,7 @@ export const setupComms = async ({
         LISTENER_GROUP_CONSUMER,
         [
           {
-            key: STREAM,
+            key: INCOMING_STREAM,
             id: ">",
           },
         ],
@@ -145,7 +147,11 @@ export const setupComms = async ({
               message.message,
               rawResult.error,
             );
-            await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+            await listenerClient.xAck(
+              INCOMING_STREAM,
+              LISTENER_GROUP,
+              message.id,
+            );
             continue;
           }
 
@@ -163,32 +169,35 @@ export const setupComms = async ({
               message.message,
               rawResult.error,
             );
-            await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+            await listenerClient.xAck(
+              INCOMING_STREAM,
+              LISTENER_GROUP,
+              message.id,
+            );
             continue;
           }
           console.log("messaged:", message.id, result.data);
 
           // td:: send handler response back to senderClient
-          const { correlationId, responseStream, payload, type } = result.data;
+          const { correlationId, payload, type } = result.data;
           const engineResponse = engineHandler({ payload, type });
-          await sendToResponseStream(
-            responseStream,
-            correlationId,
-            engineResponse,
-          );
+          await sendToResponseStream(correlationId, engineResponse);
 
-          await listenerClient.xAck(STREAM, LISTENER_GROUP, message.id);
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
         }
       }
     }
   };
 
   const sendToResponseStream = async (
-    responseStream: string,
     correlationId: string,
     engineResponse: unknown,
   ) => {
-    await senderClient.xAdd(responseStream, "*", {
+    await senderClient.xAdd(OUTGOING_STREAM, "*", {
       correlationId,
       payload: JSON.stringify(engineResponse),
     });

@@ -23,15 +23,14 @@ export type TCreateOrderSchema = z.infer<typeof CreateOrderSchema>;
 
 export const RawMessageSchema = z.object({
   correlationId: z.string(),
-  responseStream: z.string(),
   type: z.enum(["init_balance", "create_order"]),
   payload: z.string(),
 });
 
+const EngineSupportedTypes = z.enum(["init_balance", "create_order"]);
 export const MessageSchema = z.object({
   correlationId: z.string(),
-  responseStream: z.string(),
-  type: z.enum(["init_balance", "create_order"]),
+  type: EngineSupportedTypes,
   payload: z.record(z.string(), z.unknown()),
 });
 export type TMessageSchema = z.infer<typeof MessageSchema>;

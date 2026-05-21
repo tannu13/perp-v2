@@ -9,8 +9,13 @@ import { createControllers } from "./controllers";
 import { createRoutes } from "./routes";
 import { createServices } from "./services";
 import { AppError } from "./errors/app-error";
+import { setupComms } from "./services/backend-comms";
 
 const app = express();
+
+const comms = await setupComms();
+await comms.handlePendingEntries();
+comms.listenToIncomingEvents();
 
 app.use(helmet());
 
@@ -40,7 +45,7 @@ app.get("/health", async (req: Request, res: Response) => {
   });
 });
 
-const services = createServices();
+const services = createServices({ sendToEngine: comms.sendToEngineStream });
 const controllers = createControllers(services);
 const router = createRoutes(controllers);
 

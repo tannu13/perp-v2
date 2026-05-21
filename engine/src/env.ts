@@ -2,7 +2,8 @@ import z from "zod";
 
 const EnvSchema = z.object({
   REDIS_URL: z.string().min(1).startsWith("redis://"),
-  INCOMING_STREAM: z.string().min(1).default("backend-trade-comms"),
+  INCOMING_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
+  OUTGOING_STREAM: z.string().min(1).default("engine-to-backend-trade-comms"),
   LISTENER_GROUP: z.string().min(1).default("engine-group"),
   LISTENER_GROUP_CONSUMER: z.string().min(1).default("engine"),
 });

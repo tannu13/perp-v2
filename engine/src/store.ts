@@ -164,6 +164,9 @@ const users: TUser[] = [
   },
 ];
 
+// userid - available, locked
+export type TBalance = Map<string, TCollateral>;
+
 // in-memory store but needs more data in them so that user orders aren't needed
 export type TOpenOrder = {
   userId: number;
@@ -219,6 +222,7 @@ const fills: TFill[] = [
 ];
 
 export type TStore = {
+  balances: TBalance;
   orderbooks: TOrderbooks;
   users: TUser[];
   fills: TFill[];
@@ -261,6 +265,7 @@ export function createExchangeStore(): TStore {
   });
   const users: TUser[] = [];
   return {
+    balances: new Map(),
     orderbooks,
     users: [
       {

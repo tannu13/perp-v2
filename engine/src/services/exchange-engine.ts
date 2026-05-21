@@ -1210,8 +1210,16 @@ export function createEngine(store: TStore) {
     payload,
     type,
   }: Pick<TMessageSchema, "payload" | "type">): unknown => {
-    if (type === "create_order") {
-      // tdf:: send response
+    if (type === "init_balance") {
+      // td:: add user's balalnce
+      const { userId } = payload as { userId: string };
+      let balance = store.balances.get(userId);
+      if (!balance) {
+        balance = { available: 10000, locked: 0 };
+        store.balances.set(userId, balance);
+      }
+      return { userId, balance };
+    } else if (type === "create_order") {
       return {
         a: "b",
         c: "d",

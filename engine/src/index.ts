@@ -1,6 +1,6 @@
 import { createExchangeStore } from "./store";
 import { createEngine } from "./services/exchange-engine";
-import { setupComms } from "./services/comms";
+import { setupComms } from "./services/engine-comms";
 
 const store = createExchangeStore();
 const engine = createEngine(store);

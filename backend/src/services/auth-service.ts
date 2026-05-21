@@ -5,8 +5,13 @@ import { ConflictError, InvalidRequestError } from "../errors/custom-errors";
 import env from "../env";
 import { users } from "../db/schema";
 import { createToken } from "../utils/auth";
+import type { TComms } from "./backend-comms";
 
-export const createAuthService = () => {
+export const createAuthService = ({
+  sendToEngine,
+}: {
+  sendToEngine: TComms["sendToEngineStream"];
+}) => {
   const signup = async (username: string, password: string, name: string) => {
     try {
       const user = await db.query.users.findFirst({
@@ -30,6 +35,11 @@ export const createAuthService = () => {
         })
         .returning()
         .then((res) => res[0]!);
+
+      const response = await sendToEngine("init_balance", {
+        userId: newUser.id,
+      });
+      console.log("response", response);
 
       return {
         token: createToken({ userId: newUser.id }),

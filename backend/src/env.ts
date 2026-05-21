@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   DATABASE_URL: z.string().startsWith("postgresql://"),
   REDIS_URL: z.string().startsWith("redis://"),
+  INCOMING_STREAM: z.string().min(1).default("engine-to-backend-trade-comms"),
+  OUTGOING_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
 });
 
 type Env = z.infer<typeof EnvSchema>;

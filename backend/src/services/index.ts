@@ -1,7 +1,12 @@
 import { createAuthService } from "./auth-service";
+import type { TComms } from "./backend-comms";
 
-export const createServices = () => {
-  const authService = createAuthService();
+export const createServices = ({
+  sendToEngine,
+}: {
+  sendToEngine: TComms["sendToEngineStream"];
+}) => {
+  const authService = createAuthService({ sendToEngine });
 
   return { ...authService };
 };
