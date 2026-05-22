@@ -8,6 +8,12 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts"
   },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "drizzle-kit": "^0.31.10"
