@@ -1,11 +1,11 @@
 import { compare, hash } from "bcrypt";
-import db from "../db/connection";
 import { AppError } from "../errors/app-error";
 import { ConflictError, InvalidRequestError } from "../errors/custom-errors";
 import env from "../env";
-import { users } from "../db/schema";
 import { createToken } from "../utils/auth";
 import type { TComms } from "./backend-comms";
+import db from "@repo/db";
+import { users } from "@repo/db/schema";
 
 export const createAuthService = ({
   sendToEngine,
