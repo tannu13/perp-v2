@@ -9,7 +9,7 @@ import type {
   TStore,
   TUser,
 } from "../store";
-import type { TCreateOrderSchema, TMessageSchema } from "../types/order-types";
+import { type TMessageSchema } from "@repo/shared/redis-events";
 
 export function createEngine(store: TStore) {
   // const onramp = (userId: number, amount: number) => {
