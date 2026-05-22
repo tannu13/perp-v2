@@ -1,11 +1,13 @@
 import type { TService } from "../services";
 import { createAuthController } from "./auth-controllers";
+import { createOrderController } from "./order-controllers";
 
 export const createControllers = (services: TService) => {
-  const { signup, signin } = createAuthController(services);
+  const authController = createAuthController(services);
+  const orderController = createOrderController(services);
   return {
-    signup,
-    signin,
+    ...authController,
+    ...orderController,
   };
 };
 

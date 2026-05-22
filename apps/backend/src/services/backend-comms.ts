@@ -6,7 +6,7 @@ import {
   type TMessageSchema,
   type TStreamMessage,
   type TStreamResponse,
-} from "../types/engine-types";
+} from "@repo/shared/redis-events";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;

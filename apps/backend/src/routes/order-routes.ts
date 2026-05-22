@@ -2,19 +2,17 @@ import { Router } from "express";
 import { validate } from "../middlewares/validate";
 import { CreateUserSchema } from "../types/auth-types";
 import type { TController } from "../controllers";
+import { OnRampSchema } from "../types/order-types";
+import { authenticate } from "../middlewares/authenticate";
 
-export const createAuthRouter = (controller: TController) => {
+export const createOrderRouter = (controller: TController) => {
   const authRouter = Router();
 
   authRouter.post(
-    "/signup",
-    validate("body", CreateUserSchema),
-    controller.signup,
-  );
-  authRouter.post(
-    "/signin",
-    validate("body", CreateUserSchema.omit({ name: true })),
-    controller.signin,
+    "/onramp",
+    validate("body", OnRampSchema),
+    authenticate,
+    controller.onramp,
   );
 
   return authRouter;

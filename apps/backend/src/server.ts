@@ -51,6 +51,7 @@ const controllers = createControllers(services);
 const router = createRoutes(controllers);
 
 app.use(router.authRouter);
+app.use(router.orderRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError && err.isOperational) {

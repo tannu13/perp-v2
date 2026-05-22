@@ -36,10 +36,10 @@ export const createAuthService = ({
         .returning()
         .then((res) => res[0]!);
 
-      const response = await sendToEngine("init_balance", {
-        userId: newUser.id,
-      });
-      console.log("response", response);
+      // const response = await sendToEngine("init_balance", {
+      //   userId: newUser.id,
+      // });
+      // console.log("response", response);
 
       return {
         token: createToken({ userId: newUser.id }),
@@ -49,6 +49,7 @@ export const createAuthService = ({
       if (err instanceof AppError) {
         throw err;
       }
+      console.log(err);
 
       throw new InvalidRequestError();
     }
