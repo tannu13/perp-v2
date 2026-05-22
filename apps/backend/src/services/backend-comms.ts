@@ -12,7 +12,10 @@ import {
 const INCOMING_STREAM = env.INCOMING_STREAM;
 const OUTGOING_STREAM = env.OUTGOING_STREAM;
 const uniqueId = crypto.randomUUID();
-const LISTENER_GROUP = `backend-consumer-group-${uniqueId}`;
+const LISTENER_GROUP =
+  env.APP_STAGE === "dev"
+    ? "backend-consumer-group"
+    : `backend-consumer-group-${uniqueId}`;
 const LISTENER_GROUP_CONSUMER = "worker-1";
 
 export const setupComms = async () => {
