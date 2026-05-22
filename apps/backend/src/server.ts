@@ -3,13 +3,14 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import { pool } from "./db/connection";
 import helmet from "helmet";
 import { createControllers } from "./controllers";
 import { createRoutes } from "./routes";
 import { createServices } from "./services";
 import { AppError } from "./errors/app-error";
 import { setupComms } from "./services/backend-comms";
+import db from "@repo/db";
+import { users } from "@repo/db/schema";
 
 const app = express();
 
@@ -28,7 +29,7 @@ app.get("/health", async (req: Request, res: Response) => {
   };
 
   try {
-    await pool.query("Select 1");
+    await db.select().from(users).limit(1);
     services.db = "healthy";
   } catch (err) {
     console.error(
