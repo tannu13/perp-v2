@@ -1,11 +1,11 @@
 import { createClient } from "redis";
 import env from "../env";
 import {
-  MessageSchema,
-  RawMessageSchema,
-  type TMessageSchema,
-  type TStreamMessage,
-  type TStreamResponse,
+  EngineRequestSchema,
+  RawEngineRequestSchema,
+  type TEngineRequestSchema,
+  type TStreamEngineRequestMessage,
+  type TStreamEngineRequest,
 } from "@repo/shared/redis-events";
 
 // register with the redis stream
@@ -17,7 +17,9 @@ const LISTENER_GROUP_CONSUMER = env.LISTENER_GROUP_CONSUMER;
 export const setupComms = async ({
   engineHandler,
 }: {
-  engineHandler: (message: Pick<TMessageSchema, "payload" | "type">) => void;
+  engineHandler: (
+    message: Pick<TEngineRequestSchema, "payload" | "type">,
+  ) => void;
 }) => {
   const listenerClient = await createClient({ url: env.REDIS_URL }).on(
     "error",
@@ -57,14 +59,15 @@ export const setupComms = async ({
       );
       start = result.nextId;
 
-      const messages = result.messages as unknown as TStreamMessage[];
+      const messages =
+        result.messages as unknown as TStreamEngineRequestMessage[];
 
       if (messages.length === 0) break;
 
       for (const message of messages) {
         if (!message) continue;
 
-        const rawResult = RawMessageSchema.safeParse(message.message);
+        const rawResult = RawEngineRequestSchema.safeParse(message.message);
 
         if (!rawResult.success) {
           console.error(
@@ -86,7 +89,7 @@ export const setupComms = async ({
           payload: JSON.parse(rawResult.data.payload),
         };
 
-        const result = MessageSchema.safeParse(parsedMessage);
+        const result = EngineRequestSchema.safeParse(parsedMessage);
 
         if (!result.success) {
           console.error(
@@ -130,7 +133,7 @@ export const setupComms = async ({
           BLOCK: 0,
           COUNT: 1,
         },
-      )) as TStreamResponse | null;
+      )) as TStreamEngineRequest | null;
 
       if (!response || !Array.isArray(response)) {
         continue;
@@ -138,7 +141,7 @@ export const setupComms = async ({
 
       for (const stream of response) {
         for (const message of stream.messages) {
-          const rawResult = RawMessageSchema.safeParse(message.message);
+          const rawResult = RawEngineRequestSchema.safeParse(message.message);
 
           if (!rawResult.success) {
             console.error(
@@ -160,7 +163,7 @@ export const setupComms = async ({
             payload: JSON.parse(rawResult.data.payload),
           };
 
-          const result = MessageSchema.safeParse(parsedMessage);
+          const result = EngineRequestSchema.safeParse(parsedMessage);
 
           if (!result.success) {
             console.error(

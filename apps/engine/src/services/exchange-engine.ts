@@ -9,7 +9,7 @@ import type {
   TStore,
   TUser,
 } from "../store";
-import { type TMessageSchema } from "@repo/shared/redis-events";
+import { type TEngineRequestSchema } from "@repo/shared/redis-events";
 
 export function createEngine(store: TStore) {
   // const onramp = (userId: number, amount: number) => {
@@ -1209,21 +1209,27 @@ export function createEngine(store: TStore) {
   const handle = ({
     payload,
     type,
-  }: Pick<TMessageSchema, "payload" | "type">): unknown => {
+  }: Pick<TEngineRequestSchema, "payload" | "type">): unknown => {
     if (type === "init_balance") {
-      // td:: add user's balalnce
       const { userId } = payload as { userId: string };
       let balance = store.balances.get(userId);
       if (!balance) {
-        balance = { available: 10000, locked: 0 };
+        balance = { available: 0, locked: 0 };
         store.balances.set(userId, balance);
       }
+
       return { userId, balance };
-    } else if (type === "create_order") {
-      return {
-        a: "b",
-        c: "d",
-      };
+    } else if (type === "onramp") {
+      const { userId, amount } = payload as { userId: string; amount: number };
+      let balance = store.balances.get(userId);
+      if (!balance) {
+        balance = { available: amount, locked: 0 };
+        store.balances.set(userId, balance);
+      } else {
+        balance.available += amount;
+      }
+
+      return { userId, available: balance.available };
     }
     return {
       v: "b",

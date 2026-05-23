@@ -1,23 +1,46 @@
 import z from "zod";
 
-export const RawMessageSchema = z.object({
+const EngineSupportedTypes = z.enum(["init_balance", "onramp", "create_order"]);
+export type TEngineSupportedTypes = z.infer<typeof EngineSupportedTypes>;
+
+// engine requests
+export const RawEngineRequestSchema = z.object({
   correlationId: z.string(),
-  type: z.enum(["init_balance", "create_order"]),
+  type: EngineSupportedTypes,
   payload: z.string(),
 });
 
-const EngineSupportedTypes = z.enum(["init_balance", "create_order"]);
-export const MessageSchema = z.object({
+export const EngineRequestSchema = z.object({
   correlationId: z.string(),
   type: EngineSupportedTypes,
   payload: z.record(z.string(), z.unknown()),
 });
-export type TMessageSchema = z.infer<typeof MessageSchema>;
-export type TStreamMessage = {
+export type TEngineRequestSchema = z.infer<typeof EngineRequestSchema>;
+
+export type TStreamEngineRequestMessage = {
   id: string;
-  message: TMessageSchema;
+  message: TEngineRequestSchema;
 };
-export type TStreamResponse = {
+export type TStreamEngineRequest = {
   name: string;
-  messages: TStreamMessage[];
+  messages: TStreamEngineRequestMessage[];
+}[];
+
+// engine responses
+export const RawEngineResponseSchema = z.object({
+  correlationId: z.string(),
+  payload: z.string(),
+});
+export const EngineResponseSchema = z.object({
+  correlationId: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+});
+export type TEngineResponseSchema = z.infer<typeof EngineResponseSchema>;
+export type TStreamEngineResponseMessage = {
+  id: string;
+  message: TEngineResponseSchema;
+};
+export type TStreamEngineResponse = {
+  name: string;
+  messages: TStreamEngineResponseMessage[];
 }[];

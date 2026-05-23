@@ -1,6 +1,6 @@
 import { createAuthService } from "./auth-service";
 import type { TComms } from "./backend-comms";
-import { createEngineService } from "./engine-service";
+import { createOrderService } from "./order-service";
 
 export const createServices = ({
   sendToEngine,
@@ -8,8 +8,8 @@ export const createServices = ({
   sendToEngine: TComms["sendToEngineStream"];
 }) => {
   const authService = createAuthService({ sendToEngine });
-  const engineService = createEngineService({ sendToEngine });
+  const orderService = createOrderService({ sendToEngine });
 
-  return { ...authService, ...engineService };
+  return { ...authService, ...orderService };
 };
 export type TService = ReturnType<typeof createServices>;

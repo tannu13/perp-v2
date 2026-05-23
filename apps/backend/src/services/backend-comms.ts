@@ -1,11 +1,11 @@
 import { createClient } from "redis";
 import env from "../env";
 import {
-  MessageSchema,
-  RawMessageSchema,
-  type TMessageSchema,
-  type TStreamMessage,
-  type TStreamResponse,
+  RawEngineResponseSchema,
+  type TEngineSupportedTypes,
+  type TStreamEngineResponse,
+  EngineResponseSchema,
+  type TStreamEngineResponseMessage,
 } from "@repo/shared/redis-events";
 
 // register with the redis stream
@@ -61,7 +61,8 @@ export const setupComms = async () => {
       );
       start = result.nextId;
 
-      const messages = result.messages as unknown as TStreamMessage[];
+      const messages =
+        result.messages as unknown as TStreamEngineResponseMessage[];
 
       if (messages.length === 0) break;
 
@@ -88,7 +89,7 @@ export const setupComms = async () => {
           BLOCK: 0,
           COUNT: 1,
         },
-      )) as TStreamResponse | null;
+      )) as TStreamEngineResponse | null;
 
       if (!response || !Array.isArray(response)) {
         continue;
@@ -96,7 +97,7 @@ export const setupComms = async () => {
 
       for (const stream of response) {
         for (const message of stream.messages) {
-          const rawResult = RawMessageSchema.safeParse(message.message);
+          const rawResult = RawEngineResponseSchema.safeParse(message.message);
 
           if (!rawResult.success) {
             console.error(
@@ -118,7 +119,7 @@ export const setupComms = async () => {
             payload: JSON.parse(rawResult.data.payload),
           };
 
-          const result = MessageSchema.safeParse(parsedMessage);
+          const result = EngineResponseSchema.safeParse(parsedMessage);
 
           if (!result.success) {
             console.error(
@@ -136,8 +137,9 @@ export const setupComms = async () => {
           }
           console.log("messaged:", message.id, result.data);
           const { correlationId, payload } = result.data;
+
+          // resolve the promise, if available else short circuit
           promiseResolvers.get(correlationId)?.(payload);
-          // td:: check if this backend has the correlationId set on the promises array, if not just ack it.
 
           await listenerClient.xAck(
             INCOMING_STREAM,
@@ -150,8 +152,8 @@ export const setupComms = async () => {
   };
 
   const sendToEngineStream = async (
-    type: "init_balance" | "create_order",
-    engineRquest: unknown,
+    type: TEngineSupportedTypes,
+    payload: Record<string, unknown>,
   ) => {
     const correlationId = crypto.randomUUID();
     return new Promise(async (res, rej) => {
@@ -159,7 +161,7 @@ export const setupComms = async () => {
       await senderClient.xAdd(OUTGOING_STREAM, "*", {
         correlationId,
         type,
-        payload: JSON.stringify(engineRquest),
+        payload: JSON.stringify(payload),
       });
     });
   };

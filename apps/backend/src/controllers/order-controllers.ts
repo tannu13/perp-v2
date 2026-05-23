@@ -7,8 +7,8 @@ export const createOrderController = (services: TService) => {
   const onramp = async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { amount } = req.body as TOnRampSchema;
-    await services.onramp(userId, amount);
-    return res.status(200).json({ userId, amount });
+    const response = await services.onramp(userId, amount);
+    return res.status(200).json(response);
   };
 
   return { onramp };

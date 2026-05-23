@@ -36,10 +36,9 @@ export const createAuthService = ({
         .returning()
         .then((res) => res[0]!);
 
-      // const response = await sendToEngine("init_balance", {
-      //   userId: newUser.id,
-      // });
-      // console.log("response", response);
+      sendToEngine("init_balance", {
+        userId: newUser.id,
+      });
 
       return {
         token: createToken({ userId: newUser.id }),

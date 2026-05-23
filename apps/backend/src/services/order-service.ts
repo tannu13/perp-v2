@@ -1,13 +1,15 @@
 import type { TComms } from "./backend-comms";
 
-export const createEngineService = ({
+export const createOrderService = ({
   sendToEngine,
 }: {
   sendToEngine: TComms["sendToEngineStream"];
 }) => {
   const onramp = async (userId: string, addBalance: number) => {
-    //
-    console.log(userId, addBalance);
+    return await sendToEngine("onramp", {
+      userId,
+      amount: addBalance,
+    });
   };
 
   return { onramp };
