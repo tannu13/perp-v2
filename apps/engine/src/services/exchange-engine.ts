@@ -1209,7 +1209,10 @@ export function createEngine(store: TStore) {
   const handle = ({
     payload,
     type,
-  }: Pick<TEngineRequestSchema, "payload" | "type">): unknown => {
+  }: Pick<TEngineRequestSchema, "payload" | "type">): Record<
+    string,
+    unknown
+  > => {
     if (type === "init_balance") {
       const { userId } = payload as { userId: string };
       let balance = store.balances.get(userId);
@@ -1230,6 +1233,8 @@ export function createEngine(store: TStore) {
       }
 
       return { userId, available: balance.available };
+    } else if (type === "create_order") {
+      return payload;
     }
     return {
       v: "b",

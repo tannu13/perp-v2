@@ -29,11 +29,15 @@ export type TStreamEngineRequest = {
 // engine responses
 export const RawEngineResponseSchema = z.object({
   correlationId: z.string(),
-  payload: z.string(),
+  ok: z.string(),
+  data: z.string(),
+  error: z.string(),
 });
 export const EngineResponseSchema = z.object({
   correlationId: z.string(),
-  payload: z.record(z.string(), z.unknown()),
+  ok: z.boolean(),
+  data: z.union([z.record(z.string(), z.unknown()), z.string()]),
+  error: z.string(),
 });
 export type TEngineResponseSchema = z.infer<typeof EngineResponseSchema>;
 export type TStreamEngineResponseMessage = {

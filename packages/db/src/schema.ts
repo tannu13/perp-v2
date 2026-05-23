@@ -51,11 +51,11 @@ export const orders = pgTable("orders", {
   positionType: positionTypesEnum().notNull(),
   orderType: orderTypesEnum().notNull(),
   status: orderStatusesEnum().notNull(),
-  qty: varchar("qty", { length: 80 }),
-  filledQty: varchar("filled_qty", { length: 80 }),
-  price: varchar("price", { length: 80 }),
-  slippage: integer("slippage"),
-  initialMargin: varchar("initial_margin", { length: 80 }),
+  qty: varchar("qty", { length: 80 }).notNull(),
+  filledQty: varchar("filled_qty", { length: 80 }).notNull(),
+  price: varchar("price", { length: 80 }).notNull(),
+  slippage: integer("slippage").notNull(),
+  initialMargin: varchar("initial_margin", { length: 80 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

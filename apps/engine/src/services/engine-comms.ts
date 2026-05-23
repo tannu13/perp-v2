@@ -7,6 +7,7 @@ import {
   type TStreamEngineRequestMessage,
   type TStreamEngineRequest,
 } from "@repo/shared/redis-events";
+import type { TEngine } from "./exchange-engine";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;
@@ -19,7 +20,7 @@ export const setupComms = async ({
 }: {
   engineHandler: (
     message: Pick<TEngineRequestSchema, "payload" | "type">,
-  ) => void;
+  ) => ReturnType<TEngine["handle"]>;
 }) => {
   const listenerClient = await createClient({ url: env.REDIS_URL }).on(
     "error",
@@ -110,8 +111,22 @@ export const setupComms = async ({
 
         const { correlationId, payload, type } = result.data;
         // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - td:: think more...
-        const engineResponse = engineHandler({ payload, type });
-        await sendToResponseStream(correlationId, engineResponse);
+        try {
+          const data = engineHandler({ payload, type });
+          await sendToResponseStream({
+            correlationId,
+            ok: true,
+            data,
+          });
+        } catch (err) {
+          if (err instanceof Error) {
+            await sendToResponseStream({
+              correlationId,
+              ok: false,
+              error: err.message,
+            });
+          }
+        }
 
         await listenerClient.xAck(INCOMING_STREAM, LISTENER_GROUP, message.id);
       }
@@ -183,8 +198,22 @@ export const setupComms = async ({
 
           // td:: send handler response back to senderClient
           const { correlationId, payload, type } = result.data;
-          const engineResponse = engineHandler({ payload, type });
-          await sendToResponseStream(correlationId, engineResponse);
+          try {
+            const data = engineHandler({ payload, type });
+            await sendToResponseStream({
+              correlationId,
+              ok: true,
+              data,
+            });
+          } catch (err) {
+            if (err instanceof Error) {
+              await sendToResponseStream({
+                correlationId,
+                ok: false,
+                error: err.message,
+              });
+            }
+          }
 
           await listenerClient.xAck(
             INCOMING_STREAM,
@@ -196,13 +225,22 @@ export const setupComms = async ({
     }
   };
 
-  const sendToResponseStream = async (
-    correlationId: string,
-    engineResponse: unknown,
-  ) => {
+  const sendToResponseStream = async ({
+    correlationId,
+    ok,
+    data,
+    error,
+  }: {
+    correlationId: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+  }) => {
     await senderClient.xAdd(OUTGOING_STREAM, "*", {
       correlationId,
-      payload: JSON.stringify(engineResponse),
+      ok: JSON.stringify(ok),
+      data: data ? JSON.stringify(data) : "",
+      error: error ? error : "",
     });
   };
 

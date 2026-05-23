@@ -6,6 +6,7 @@ import {
   type TStreamEngineResponse,
   EngineResponseSchema,
   type TStreamEngineResponseMessage,
+  type TEngineResponseSchema,
 } from "@repo/shared/redis-events";
 
 // register with the redis stream
@@ -19,7 +20,8 @@ const LISTENER_GROUP =
 const LISTENER_GROUP_CONSUMER = "worker-1";
 
 export const setupComms = async () => {
-  const promiseResolvers: Map<string, (value: unknown) => void> = new Map();
+  const promiseResolvers: Map<string, (value: TEngineResponseSchema) => void> =
+    new Map();
 
   const listenerClient = await createClient({ url: env.REDIS_URL }).on(
     "error",
@@ -114,10 +116,14 @@ export const setupComms = async () => {
             continue;
           }
 
+          const isOk = JSON.parse(rawResult.data.ok);
           const parsedMessage = {
             ...rawResult.data,
-            payload: JSON.parse(rawResult.data.payload),
+            ok: isOk,
+            data: isOk ? JSON.parse(rawResult.data.data) : "",
           };
+
+          console.log("parsedMessage", parsedMessage);
 
           const result = EngineResponseSchema.safeParse(parsedMessage);
 
@@ -136,10 +142,9 @@ export const setupComms = async () => {
             continue;
           }
           console.log("messaged:", message.id, result.data);
-          const { correlationId, payload } = result.data;
-
+          const { correlationId } = result.data;
           // resolve the promise, if available else short circuit
-          promiseResolvers.get(correlationId)?.(payload);
+          promiseResolvers.get(correlationId)?.(result.data);
 
           await listenerClient.xAck(
             INCOMING_STREAM,
@@ -156,7 +161,7 @@ export const setupComms = async () => {
     payload: Record<string, unknown>,
   ) => {
     const correlationId = crypto.randomUUID();
-    return new Promise(async (res, rej) => {
+    return new Promise<TEngineResponseSchema>(async (res, rej) => {
       promiseResolvers.set(correlationId, res);
       await senderClient.xAdd(OUTGOING_STREAM, "*", {
         correlationId,
