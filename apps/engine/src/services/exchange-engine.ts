@@ -197,6 +197,9 @@ export function createEngine(store: TStore) {
           marginNeededAfterNetting = existingPosition.margin;
 
           // remove the existingPosition
+          // td:: this position needs to be written to a db table as it is being closed. for now just pushing it to user's closed position's array but this can grow rapidly with activity so need to push this data to db table later via redis events and then db writer picks it up
+          // td:: closed postion should have extra data, have spread existingPosition so that keys don't get updated from below but still it might need more data points
+          user.closedPositions.push({ ...existingPosition });
           user.positions.splice(positionIndex, 1);
         } else if (updatedQuantity > 0) {
           // existingPosition had greater qty
@@ -956,6 +959,32 @@ export function createEngine(store: TStore) {
     };
   };
 
+  const getOpenPositionsForMarket = (userId: string, marketId: string) => {
+    const user = getUserById(userId);
+    if (!user) {
+      throw new Error("User has no positions");
+    }
+
+    const marketPositions = user.positions.filter(
+      (pos) => pos.marketId === marketId,
+    );
+
+    return { positions: marketPositions };
+  };
+
+  const getClosedPositionsForMarket = (userId: string, marketId: string) => {
+    const user = getUserById(userId);
+    if (!user) {
+      throw new Error("User has no positions");
+    }
+
+    const marketPositions = user.closedPositions.filter(
+      (pos) => pos.marketId === marketId,
+    );
+
+    return { closedPositions: marketPositions };
+  };
+
   //
   const handle = ({
     payload,
@@ -972,6 +1001,7 @@ export function createEngine(store: TStore) {
           userId,
           collateral: { available: 0, locked: 0 },
           positions: [],
+          closedPositions: [],
         };
 
         store.users.set(userId, user);
@@ -986,6 +1016,7 @@ export function createEngine(store: TStore) {
           userId,
           collateral: { available: amount, locked: 0 },
           positions: [],
+          closedPositions: [],
         };
         store.users.set(userId, user);
       } else {
@@ -1002,6 +1033,7 @@ export function createEngine(store: TStore) {
           userId,
           collateral: { available: 0, locked: 0 },
           positions: [],
+          closedPositions: [],
         };
 
         store.users.set(userId, user);
@@ -1023,6 +1055,7 @@ export function createEngine(store: TStore) {
           userId,
           collateral: { available: 0, locked: 0 },
           positions: [],
+          closedPositions: [],
         };
 
         store.users.set(userId, user);
@@ -1030,6 +1063,18 @@ export function createEngine(store: TStore) {
       return {
         balances: user.collateral,
       };
+    } else if (type === "get_open_positions_for_market") {
+      const { userId, marketId } = payload as {
+        userId: string;
+        marketId: string;
+      };
+      return getOpenPositionsForMarket(userId, marketId);
+    } else if (type === "get_closed_positions_for_market") {
+      const { userId, marketId } = payload as {
+        userId: string;
+        marketId: string;
+      };
+      return getClosedPositionsForMarket(userId, marketId);
     }
     return {
       v: "b",

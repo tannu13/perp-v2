@@ -6,6 +6,8 @@ const EngineSupportedTypes = z.enum([
   "create_order",
   "cancel_order",
   "get_balances",
+  "get_open_positions_for_market",
+  "get_closed_positions_for_market",
 ]);
 export type TEngineSupportedTypes = z.infer<typeof EngineSupportedTypes>;
 

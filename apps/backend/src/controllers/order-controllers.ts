@@ -31,5 +31,29 @@ export const createOrderController = (services: TService) => {
     return res.status(200).json(response);
   };
 
-  return { onramp, createOrder, cencelOrder, getBalances };
+  const getOpenPositionsForMarket = async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const marketId = req.params.marketId as string;
+    const response = await services.getOpenPositionsForMarket(userId, marketId);
+    return res.status(200).json(response);
+  };
+
+  const getClosedPositionsForMarket = async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const marketId = req.params.marketId as string;
+    const response = await services.getClosedPositionsForMarket(
+      userId,
+      marketId,
+    );
+    return res.status(200).json(response);
+  };
+
+  return {
+    onramp,
+    createOrder,
+    cencelOrder,
+    getBalances,
+    getOpenPositionsForMarket,
+    getClosedPositionsForMarket,
+  };
 };

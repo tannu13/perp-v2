@@ -42,6 +42,7 @@ export type TUser = {
   userId: string;
   collateral: TCollateral;
   positions: TPosition[];
+  closedPositions: TPosition[];
 };
 export type TUsers = Map<string, TUser>;
 const users: TUsers = new Map([
@@ -53,6 +54,7 @@ const users: TUsers = new Map([
         available: 1950,
         locked: 50,
       },
+      closedPositions: [],
       positions: [
         {
           marketId: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",
@@ -74,6 +76,7 @@ const users: TUsers = new Map([
         available: 1950,
         locked: 50,
       },
+      closedPositions: [],
       positions: [
         {
           marketId: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",
@@ -95,6 +98,7 @@ const users: TUsers = new Map([
         available: 1950,
         locked: 50,
       },
+      closedPositions: [],
       positions: [
         {
           marketId: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",
@@ -116,6 +120,7 @@ const users: TUsers = new Map([
         available: 1950,
         locked: 50,
       },
+      closedPositions: [],
       positions: [
         {
           marketId: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",

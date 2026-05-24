@@ -84,5 +84,42 @@ export const createOrderService = ({
     return response.data;
   };
 
-  return { onramp, createOrder, cancelOrder, getBalances };
+  const getOpenPositionsForMarket = async (
+    userId: string,
+    marketId: string,
+  ) => {
+    const response = await sendToEngine("get_open_positions_for_market", {
+      userId,
+      marketId,
+    });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
+  };
+
+  const getClosedPositionsForMarket = async (
+    userId: string,
+    marketId: string,
+  ) => {
+    const response = await sendToEngine("get_closed_positions_for_market", {
+      userId,
+      marketId,
+    });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
+  };
+
+  return {
+    onramp,
+    createOrder,
+    cancelOrder,
+    getBalances,
+    getOpenPositionsForMarket,
+    getClosedPositionsForMarket,
+  };
 };

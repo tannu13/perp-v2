@@ -33,5 +33,19 @@ export const createOrderRouter = (controller: TController) => {
 
   orderRouter.get("/equity/balances", authenticate, controller.getBalances);
 
+  orderRouter.get(
+    "/positions/open/:marketId",
+    authenticate,
+    validate("params", z.object({ marketId: z.string().trim().min(1) })),
+    controller.getOpenPositionsForMarket,
+  );
+
+  orderRouter.get(
+    "/positions/closed/:marketId",
+    authenticate,
+    validate("params", z.object({ marketId: z.string().trim().min(1) })),
+    controller.getClosedPositionsForMarket,
+  );
+
   return orderRouter;
 };
