@@ -19,5 +19,11 @@ export const createOrderController = (services: TService) => {
     return res.status(200).json(response);
   };
 
-  return { onramp, createOrder };
+  const cencelOrder = async (req: Request, res: Response) => {
+    const orderId = req.params.orderId as string;
+    const response = await services.cancelOrder(orderId);
+    return res.status(200).json(response);
+  };
+
+  return { onramp, createOrder, cencelOrder };
 };

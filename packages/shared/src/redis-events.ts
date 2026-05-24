@@ -1,6 +1,11 @@
 import z from "zod";
 
-const EngineSupportedTypes = z.enum(["init_balance", "onramp", "create_order"]);
+const EngineSupportedTypes = z.enum([
+  "init_balance",
+  "onramp",
+  "create_order",
+  "cancel_order",
+]);
 export type TEngineSupportedTypes = z.infer<typeof EngineSupportedTypes>;
 
 // engine requests

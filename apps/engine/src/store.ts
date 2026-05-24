@@ -50,8 +50,8 @@ const users: TUsers = new Map([
     {
       userId: "be064682-faac-490c-9c35-a71c9ad180be",
       collateral: {
-        available: 2000,
-        locked: 0,
+        available: 1950,
+        locked: 50,
       },
       positions: [
         {
@@ -71,8 +71,8 @@ const users: TUsers = new Map([
     {
       userId: "e4d48786-8cb1-4767-99f1-d35bea2b2356",
       collateral: {
-        available: 2000,
-        locked: 0,
+        available: 1950,
+        locked: 50,
       },
       positions: [
         {
@@ -92,8 +92,8 @@ const users: TUsers = new Map([
     {
       userId: "ec9638aa-bded-4ef6-963c-d0025cf10503",
       collateral: {
-        available: 2000,
-        locked: 0,
+        available: 1950,
+        locked: 50,
       },
       positions: [
         {
@@ -113,8 +113,8 @@ const users: TUsers = new Map([
     {
       userId: "a13f4673-ada6-422a-b25d-4e4dd049220d",
       collateral: {
-        available: 2000,
-        locked: 0,
+        available: 1950,
+        locked: 50,
       },
       positions: [
         {
@@ -144,7 +144,7 @@ export type TOpenOrder = {
   createdAt: Date;
 };
 // in-memory store
-type TBid = {
+export type TBid = {
   availableQty: number;
   openOrders: TOpenOrder[];
 };

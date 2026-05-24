@@ -2,6 +2,7 @@ import type { InsertFillRecord, SelectOrderRecord } from "@repo/db/schema";
 import type {
   FillRecordNumberified,
   OrderRecordNumberified,
+  TBid,
   TFill,
   TOpenOrder,
   TOrderbook,
@@ -392,7 +393,7 @@ export function createEngine(store: TStore) {
         }
 
         // create positions for the user whose open order got matched
-        const relativeMargin = calculateRelativeMargin(
+        const relativeMarginForFilledQty = calculateRelativeMargin(
           matchedRestingOrder.margin,
           matchedRestingOrder.qty,
           fill.qty,
@@ -403,11 +404,20 @@ export function createEngine(store: TStore) {
             marketId: matchedRestingOrder.marketId,
             type: matchedRestingOrder.positionType,
             qty: fill.qty,
-            margin: relativeMargin,
+            margin: relativeMarginForFilledQty,
             averagePrice: bestNextPrice,
           },
           orderbook.lastTradedPrice,
         );
+
+        // update restingOpenOrder's margin also so that it reflects the current state of margin locked for the open order
+        const relativeMarginForRemainingQtyOfRestingOrder =
+          calculateRelativeMargin(
+            restingOpenOrder.margin,
+            availableQty,
+            availableQty - fill.qty,
+          );
+        restingOpenOrder.margin = relativeMarginForRemainingQtyOfRestingOrder;
 
         if (shouldBreak) break;
 
@@ -421,7 +431,7 @@ export function createEngine(store: TStore) {
       filledQtyForCurrentOrder > 0
         ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
         : 0;
-    const relativeMargin = calculateRelativeMargin(
+    const relativeMarginForFilledQty = calculateRelativeMargin(
       currentOrder.initialMargin,
       currentOrder.qty,
       filledQtyForCurrentOrder,
@@ -434,7 +444,7 @@ export function createEngine(store: TStore) {
           marketId: currentOrder.marketId,
           type: currentOrder.positionType,
           qty: filledQtyForCurrentOrder,
-          margin: relativeMargin,
+          margin: relativeMarginForFilledQty,
           averagePrice: averagePriceForFilledQtyOfCurrentOrder,
         },
         orderbook.lastTradedPrice,
@@ -448,6 +458,11 @@ export function createEngine(store: TStore) {
 
     if (remainingQty > 0) {
       if (currentOrder.orderType === "limit") {
+        const relativeMarginForRemainingQty = calculateRelativeMargin(
+          currentOrder.initialMargin,
+          currentOrder.qty,
+          remainingQty,
+        );
         // add an open order for this user for the currentOrder.price in the bids
         const newOpenOrder: TOpenOrder = {
           userId: userForCurrentOrder.userId,
@@ -456,7 +471,7 @@ export function createEngine(store: TStore) {
           orderId: currentOrder.id,
           marketId: currentOrder.marketId,
           positionType: currentOrder.positionType,
-          margin: relativeMargin,
+          margin: relativeMarginForRemainingQty,
           status: "open",
           createdAt: new Date(),
         };
@@ -596,7 +611,7 @@ export function createEngine(store: TStore) {
         }
 
         // create positions for the user whose open order got matched
-        const relativeMargin = calculateRelativeMargin(
+        const relativeMarginForFilledQty = calculateRelativeMargin(
           matchedRestingOrder.margin,
           matchedRestingOrder.qty,
           fill.qty,
@@ -607,11 +622,20 @@ export function createEngine(store: TStore) {
             marketId: matchedRestingOrder.marketId,
             type: matchedRestingOrder.positionType,
             qty: fill.qty,
-            margin: relativeMargin,
+            margin: relativeMarginForFilledQty,
             averagePrice: bestNextPrice,
           },
           orderbook.lastTradedPrice,
         );
+
+        // update restingOpenOrder's margin also so that it reflects the current state of margin locked for the open order
+        const relativeMarginForRemainingQtyOfRestingOrder =
+          calculateRelativeMargin(
+            restingOpenOrder.margin,
+            availableQty,
+            availableQty - fill.qty,
+          );
+        restingOpenOrder.margin = relativeMarginForRemainingQtyOfRestingOrder;
 
         if (shouldBreak) break;
 
@@ -625,7 +649,7 @@ export function createEngine(store: TStore) {
       filledQtyForCurrentOrder > 0
         ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
         : 0;
-    const relativeMargin = calculateRelativeMargin(
+    const relativeMarginForFilledQty = calculateRelativeMargin(
       currentOrder.initialMargin,
       currentOrder.qty,
       filledQtyForCurrentOrder,
@@ -638,7 +662,7 @@ export function createEngine(store: TStore) {
           marketId: currentOrder.marketId,
           type: currentOrder.positionType,
           qty: filledQtyForCurrentOrder,
-          margin: relativeMargin,
+          margin: relativeMarginForFilledQty,
           averagePrice: averagePriceForFilledQtyOfCurrentOrder,
         },
         orderbook.lastTradedPrice,
@@ -652,6 +676,11 @@ export function createEngine(store: TStore) {
 
     if (remainingQty > 0) {
       if (currentOrder.orderType === "limit") {
+        const relativeMarginForRemainingQty = calculateRelativeMargin(
+          currentOrder.initialMargin,
+          currentOrder.qty,
+          remainingQty,
+        );
         // add an open order for this user for the currentOrder.price in the asks
         const newOpenOrder: TOpenOrder = {
           userId: userForCurrentOrder.userId,
@@ -660,7 +689,7 @@ export function createEngine(store: TStore) {
           orderId: currentOrder.id,
           marketId: currentOrder.marketId,
           positionType: currentOrder.positionType,
-          margin: relativeMargin,
+          margin: relativeMarginForRemainingQty,
           status: "open",
           createdAt: new Date(),
         };
@@ -864,8 +893,67 @@ export function createEngine(store: TStore) {
 
     return matchOrder(normalizedPayload, orderbook, user);
   };
-  const cancelOrder = () => {
-    // td:: if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward
+  const cancelOrder = (order: SelectOrderRecord) => {
+    // if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward.
+    // td::cancel only what is sitting on the order book and not the positions PLUS revert the apt balances
+
+    let orderbookRecord: TBid | undefined;
+    const orderbook = store.orderbooks[order.marketId];
+    const user = getUserById(order.userId);
+    if (!orderbook || !user) {
+      throw new Error("Order not found");
+    }
+    if (order.positionType === "LONG") {
+      // find the order in bids
+
+      orderbookRecord = orderbook.bids[`${order.price}`];
+    } else {
+      // find the order in asks
+      orderbookRecord = orderbook.asks[`${order.price}`];
+    }
+
+    if (
+      !orderbookRecord ||
+      orderbookRecord.availableQty <= 0 ||
+      orderbookRecord.openOrders.length <= 0
+    ) {
+      throw new Error("Order not found");
+    }
+    const orderIndex = orderbookRecord.openOrders.findIndex(
+      (o) => o.orderId === order.id,
+    );
+    if (orderIndex === -1) {
+      throw new Error("Order not found");
+    }
+
+    // revert the locked margin
+    const openOrder = orderbookRecord.openOrders[orderIndex]!;
+    const releasedMargin = openOrder.margin;
+    user.collateral.available += releasedMargin;
+    user.collateral.locked -= releasedMargin;
+
+    // delete the order
+    orderbookRecord.openOrders.splice(orderIndex, 1);
+    const remainingQty = Number(order.qty) - Number(order.filledQty);
+    orderbookRecord.availableQty -= remainingQty;
+    if (
+      orderbookRecord.availableQty <= 0 ||
+      orderbookRecord.openOrders.length <= 0
+    ) {
+      delete orderbook.asks[`${order.price}`];
+    }
+
+    order.status = "cancelled";
+
+    return {
+      order,
+      cancelledQty: openOrder.qty - openOrder.filledQty,
+      balances: {
+        releasedMargin,
+        available: user.collateral.available,
+        locked: user.collateral.locked,
+      },
+    };
   };
 
   //
@@ -922,6 +1010,10 @@ export function createEngine(store: TStore) {
       if (!resp) {
         throw new Error("Something went wrong");
       }
+      return resp;
+    } else if (type === "cancel_order") {
+      const resp = cancelOrder(payload as SelectOrderRecord);
+      console.dir(store, { depth: 10 });
       return resp;
     }
     return {

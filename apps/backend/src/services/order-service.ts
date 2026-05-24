@@ -15,8 +15,6 @@ export const createOrderService = ({
       amount: addBalance,
     });
 
-    console.log("daf", response);
-
     if (!response.ok) {
       throw new InvalidRequestError(response.error);
     }
@@ -61,5 +59,21 @@ export const createOrderService = ({
     return response.data;
   };
 
-  return { onramp, createOrder };
+  const cancelOrder = async (orderId: string) => {
+    const order = await db.query.orders.findFirst({
+      where: (orderRow, { eq }) => eq(orderRow.id, orderId),
+    });
+    if (!order) {
+      throw new NotFoundError("Order does not exist");
+    }
+
+    const response = await sendToEngine("cancel_order", { ...order });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
+  };
+
+  return { onramp, createOrder, cancelOrder };
 };
