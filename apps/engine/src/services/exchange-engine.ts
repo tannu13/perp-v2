@@ -1015,6 +1015,21 @@ export function createEngine(store: TStore) {
       const resp = cancelOrder(payload as SelectOrderRecord);
       console.dir(store, { depth: 10 });
       return resp;
+    } else if (type === "get_balances") {
+      const { userId } = payload as { userId: string };
+      let user = getUserById(userId);
+      if (!user) {
+        user = {
+          userId,
+          collateral: { available: 0, locked: 0 },
+          positions: [],
+        };
+
+        store.users.set(userId, user);
+      }
+      return {
+        balances: user.collateral,
+      };
     }
     return {
       v: "b",

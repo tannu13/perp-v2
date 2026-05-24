@@ -31,5 +31,7 @@ export const createOrderRouter = (controller: TController) => {
     controller.cencelOrder,
   );
 
+  orderRouter.get("/equity/balances", authenticate, controller.getBalances);
+
   return orderRouter;
 };

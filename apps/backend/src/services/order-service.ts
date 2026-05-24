@@ -75,5 +75,14 @@ export const createOrderService = ({
     return response.data;
   };
 
-  return { onramp, createOrder, cancelOrder };
+  const getBalances = async (userId: string) => {
+    const response = await sendToEngine("get_balances", { userId });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
+  };
+
+  return { onramp, createOrder, cancelOrder, getBalances };
 };

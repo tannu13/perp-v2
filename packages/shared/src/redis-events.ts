@@ -5,6 +5,7 @@ const EngineSupportedTypes = z.enum([
   "onramp",
   "create_order",
   "cancel_order",
+  "get_balances",
 ]);
 export type TEngineSupportedTypes = z.infer<typeof EngineSupportedTypes>;
 
