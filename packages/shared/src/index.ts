@@ -12,7 +12,7 @@ export const CreateOrderSchema = z.discriminatedUnion("orderType", [
   }),
   z.object({
     orderType: z.literal("market"),
-    price: z.coerce.number().positive(),
+    price: z.literal(0),
     slippage: z.coerce.number().positive(),
     qty: z.coerce.number().positive(),
     equity: z.coerce.number().positive().optional(),

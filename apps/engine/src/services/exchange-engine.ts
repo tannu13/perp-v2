@@ -285,7 +285,7 @@ export function createEngine(store: TStore) {
     matchedRestingOrders: TOpenOrder[];
   };
 
-  const matchLimitLongOrder = (
+  const matchLongOrder = (
     currentOrder: OrderRecordNumberified,
     orderbook: TOrderbook,
     userForCurrentOrder: TUser,
@@ -447,30 +447,36 @@ export function createEngine(store: TStore) {
     }
 
     if (remainingQty > 0) {
-      // add an open order for this user for the currentOrder.price in the bids
-      const newOpenOrder: TOpenOrder = {
-        userId: userForCurrentOrder.userId,
-        qty: currentOrder.qty,
-        filledQty: filledQtyForCurrentOrder,
-        orderId: currentOrder.id,
-        marketId: currentOrder.marketId,
-        positionType: currentOrder.positionType,
-        margin: relativeMargin,
-        status: "open",
-        createdAt: new Date(),
-      };
-
-      const bids = orderbook.bids[`${currentOrder.price}`];
-      const additionalAvailableQty =
-        currentOrder.qty - filledQtyForCurrentOrder;
-      if (!bids) {
-        orderbook.bids[`${currentOrder.price}`] = {
-          availableQty: additionalAvailableQty,
-          openOrders: [newOpenOrder],
+      if (currentOrder.orderType === "limit") {
+        // add an open order for this user for the currentOrder.price in the bids
+        const newOpenOrder: TOpenOrder = {
+          userId: userForCurrentOrder.userId,
+          qty: currentOrder.qty,
+          filledQty: filledQtyForCurrentOrder,
+          orderId: currentOrder.id,
+          marketId: currentOrder.marketId,
+          positionType: currentOrder.positionType,
+          margin: relativeMargin,
+          status: "open",
+          createdAt: new Date(),
         };
+
+        const bids = orderbook.bids[`${currentOrder.price}`];
+        const additionalAvailableQty =
+          currentOrder.qty - filledQtyForCurrentOrder;
+        if (!bids) {
+          orderbook.bids[`${currentOrder.price}`] = {
+            availableQty: additionalAvailableQty,
+            openOrders: [newOpenOrder],
+          };
+        } else {
+          bids.availableQty += additionalAvailableQty;
+          bids.openOrders.push(newOpenOrder);
+        }
       } else {
-        bids.availableQty += additionalAvailableQty;
-        bids.openOrders.push(newOpenOrder);
+        // currentOrder.orderType = "market"
+        // cancel the remaining order
+        currentOrder.status = "cancelled";
       }
     }
 
@@ -482,9 +488,9 @@ export function createEngine(store: TStore) {
       matchedRestingOrders,
     };
   };
-  /*
-  const matchLimitShortOrder = (
-    currentOrder: TOrder,
+
+  const matchShortOrder = (
+    currentOrder: OrderRecordNumberified,
     orderbook: TOrderbook,
     userForCurrentOrder: TUser,
   ): TMatchOrderFunctionResponse => {
@@ -494,7 +500,9 @@ export function createEngine(store: TStore) {
     let filledQtyForCurrentOrder = 0;
     // for position's average price
     let totalPriceForCurrentOrder = 0;
-    const fillsForCurrentOrder: TFill[] = [];
+
+    const matchedRestingOrders: TOpenOrder[] = [];
+    const fillsForCurrentOrder: FillRecordNumberified[] = [];
     while (
       remainingQty > 0 &&
       bestNextPrice &&
@@ -513,385 +521,22 @@ export function createEngine(store: TStore) {
         const { orderIndex: restingOpenOrderIndex, order: restingOpenOrder } =
           firstOrderData;
         const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
-        const fill = createFill({
-          maker: restingOpenOrder.userId,
-          taker: userForCurrentOrder.userId,
-          market: currentOrder.market,
+
+        const fill: FillRecordNumberified = {
+          makerId: restingOpenOrder.userId,
+          takerId: userForCurrentOrder.userId,
+          marketId: currentOrder.marketId,
           qty: 0, // <- will update it later in the conditionals
           price: bestNextPrice,
-          long: restingOpenOrder.userId,
-          short: userForCurrentOrder.userId,
-        });
-        fillsForCurrentOrder.push(fill);
-
-        orderbook.lastTradedPrice = bestNextPrice;
-
-        const userOfRestingOpenOrder = getUserById(restingOpenOrder.userId)!;
-        const { order: userRestingOrder } = getUserOrderById(
-          userOfRestingOpenOrder,
-          restingOpenOrder.orderId,
-        );
-
-        if (availableQty > remainingQty) {
-          // the current order can be filled - restingOrder is partially filled
-          fill.qty = remainingQty;
-          bids.availableQty -= remainingQty;
-
-          filledQtyForCurrentOrder += remainingQty;
-          totalPriceForCurrentOrder += bestNextPrice * remainingQty;
-          currentOrder.status = "filled";
-
-          restingOpenOrder.filledQty += remainingQty;
-
-          userRestingOrder.status = "partially_filled";
-
-          remainingQty = 0;
-          shouldBreak = true;
-        } else if (availableQty === remainingQty) {
-          // the current order can be filled - restingOrder is filled
-          fill.qty = remainingQty;
-          bids.availableQty -= remainingQty;
-
-          filledQtyForCurrentOrder += remainingQty;
-          totalPriceForCurrentOrder += bestNextPrice * remainingQty;
-          currentOrder.status = "filled";
-
-          restingOpenOrder.filledQty += remainingQty;
-
-          userRestingOrder.status = "filled";
-
-          // as the resting open order is filled, splice it out
-          bids.openOrders.splice(restingOpenOrderIndex, 1);
-          if (bids.availableQty <= 0) {
-            delete orderbook.bids[`${bestNextPrice}`];
-          }
-
-          remainingQty = 0;
-          shouldBreak = true;
-        } else {
-          // availableQty < remainingQty
-          // the current order can be partially filled - restingOrder is filled
-          remainingQty -= availableQty;
-          fill.qty = availableQty;
-          bids.availableQty -= availableQty;
-
-          filledQtyForCurrentOrder += availableQty;
-          totalPriceForCurrentOrder += bestNextPrice * availableQty;
-          currentOrder.status = "partially_filled";
-
-          restingOpenOrder.filledQty += availableQty;
-
-          userRestingOrder.status = "filled";
-
-          bids.openOrders.splice(restingOpenOrderIndex, 1);
-          if (bids.availableQty <= 0) {
-            delete orderbook.bids[`${bestNextPrice}`];
-          }
-        }
-
-        // create positions for the user whose open order got matched
-        const relativeMargin = calculateRelativeMargin(
-          userRestingOrder.margin,
-          userRestingOrder.qty,
-          fill.qty,
-        );
-        createPosition(
-          userOfRestingOpenOrder,
-          {
-            market: userRestingOrder.market,
-            type: userRestingOrder.type,
-            qty: fill.qty,
-            margin: relativeMargin,
-            averagePrice: bestNextPrice,
-          },
-          orderbook.lastTradedPrice,
-        );
-
-        if (shouldBreak) break;
-
-        firstOrderData = getFirstCreatedOrder(bids.openOrders);
-      }
-
-      bestNextPrice = getNextBestBidPrice(orderbook.bids, bestNextPrice);
-    }
-
-    const averagePriceForFilledQtyOfCurrentOrder =
-      filledQtyForCurrentOrder > 0
-        ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
-        : 0;
-    if (filledQtyForCurrentOrder > 0) {
-      // create position for the current order user as they've got some / all matched
-      const relativeMargin = calculateRelativeMargin(
-        currentOrder.margin,
-        currentOrder.qty,
-        filledQtyForCurrentOrder,
-      );
-      createPosition(
-        userForCurrentOrder,
-        {
-          market: currentOrder.market,
-          type: currentOrder.type,
-          qty: filledQtyForCurrentOrder,
-          margin: relativeMargin,
-          averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-        },
-        orderbook.lastTradedPrice,
-      );
-
-      updateUnrealisedPnLForAllUsers(
-        orderbook.lastTradedPrice,
-        currentOrder.market,
-      );
-    }
-
-    if (remainingQty > 0) {
-      // add an open order for this user for the currentOrder.price in the bids
-      const newOpenOrder: TOpenOrder = {
-        userId: userForCurrentOrder.userId,
-        qty: currentOrder.qty,
-        filledQty: filledQtyForCurrentOrder,
-        orderId: currentOrder.orderId,
-        createdAt: new Date(),
-      };
-
-      const asks = orderbook.asks[`${currentOrder.price}`];
-      const additionalAvailableQty =
-        currentOrder.qty - filledQtyForCurrentOrder;
-      if (!asks) {
-        orderbook.asks[`${currentOrder.price}`] = {
-          availableQty: additionalAvailableQty,
-          openOrders: [newOpenOrder],
+          makerOrderId: restingOpenOrder.orderId,
+          takerOrderId: currentOrder.userId,
         };
-      } else {
-        asks.availableQty += additionalAvailableQty;
-        asks.openOrders.push(newOpenOrder);
-      }
-    }
-
-    return {
-      filledQty: filledQtyForCurrentOrder,
-      totalPrice: totalPriceForCurrentOrder,
-      averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-      fills: fillsForCurrentOrder,
-    };
-  };
-
-  const matchMarketLongOrder = (
-    currentOrder: TOrder,
-    orderbook: TOrderbook,
-    userForCurrentOrder: TUser,
-  ): TMatchOrderFunctionResponse => {
-    let bestNextPrice = getNextBestAskPrice(orderbook.asks);
-    let remainingQty = currentOrder.qty;
-    // for creating an open order at the end if whole order was not filled
-    let filledQtyForCurrentOrder = 0;
-    // for position's average price
-    let totalPriceForCurrentOrder = 0;
-    const fillsForCurrentOrder: TFill[] = [];
-
-    while (remainingQty > 0 && bestNextPrice) {
-      const asks = orderbook.asks[`${bestNextPrice}`]!;
-      if (asks.availableQty <= 0) {
-        // should not occur i think, 'cause i remove the empty prices
-        bestNextPrice = getNextBestAskPrice(orderbook.asks, bestNextPrice);
-        continue;
-      }
-
-      let firstOrderData = getFirstCreatedOrder(asks.openOrders);
-      while (firstOrderData) {
-        let shouldBreak = false;
-        const { orderIndex: restingOpenOrderIndex, order: restingOpenOrder } =
-          firstOrderData;
-        const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
-        const fill = createFill({
-          maker: restingOpenOrder.userId,
-          taker: userForCurrentOrder.userId,
-          market: currentOrder.market,
-          qty: 0, // <- will update it later in the conditionals
-          price: bestNextPrice,
-          long: userForCurrentOrder.userId,
-          short: restingOpenOrder.userId,
-        });
         fillsForCurrentOrder.push(fill);
 
         orderbook.lastTradedPrice = bestNextPrice;
 
         const userOfRestingOpenOrder = getUserById(restingOpenOrder.userId)!;
-        const { order: userRestingOrder } = getUserOrderById(
-          userOfRestingOpenOrder,
-          restingOpenOrder.orderId,
-        );
-
-        if (availableQty > remainingQty) {
-          // the current order can be filled - restingOrder is partially filled
-          fill.qty = remainingQty;
-          asks.availableQty -= remainingQty;
-
-          filledQtyForCurrentOrder += remainingQty;
-          totalPriceForCurrentOrder += bestNextPrice * remainingQty;
-          currentOrder.status = "filled";
-
-          restingOpenOrder.filledQty += remainingQty;
-
-          userRestingOrder.status = "partially_filled";
-
-          remainingQty = 0;
-          shouldBreak = true;
-        } else if (availableQty === remainingQty) {
-          // the current order can be filled - restingOrder is filled
-          fill.qty = remainingQty;
-          asks.availableQty -= remainingQty;
-
-          filledQtyForCurrentOrder += remainingQty;
-          totalPriceForCurrentOrder += bestNextPrice * remainingQty;
-          currentOrder.status = "filled";
-
-          restingOpenOrder.filledQty += remainingQty;
-
-          userRestingOrder.status = "filled";
-
-          // as the resting open order is filled, splice it out
-          asks.openOrders.splice(restingOpenOrderIndex, 1);
-          if (asks.availableQty <= 0) {
-            delete orderbook.asks[`${bestNextPrice}`];
-          }
-
-          remainingQty = 0;
-          shouldBreak = true;
-        } else {
-          // availableQty < remainingQty
-          // the current order can be partially filled - restingOrder is filled
-          remainingQty -= availableQty;
-          fill.qty = availableQty;
-          asks.availableQty -= availableQty;
-
-          filledQtyForCurrentOrder += availableQty;
-          totalPriceForCurrentOrder += bestNextPrice * availableQty;
-          currentOrder.status = "partially_filled";
-
-          restingOpenOrder.filledQty += availableQty;
-
-          userRestingOrder.status = "filled";
-
-          asks.openOrders.splice(restingOpenOrderIndex, 1);
-          if (asks.availableQty <= 0) {
-            delete orderbook.asks[`${bestNextPrice}`];
-          }
-        }
-
-        // create positions for the user whose open order got matched
-        const relativeMargin = calculateRelativeMargin(
-          userRestingOrder.margin,
-          userRestingOrder.qty,
-          fill.qty,
-        );
-        createPosition(
-          userOfRestingOpenOrder,
-          {
-            market: userRestingOrder.market,
-            type: userRestingOrder.type,
-            qty: fill.qty,
-            margin: relativeMargin,
-            averagePrice: bestNextPrice,
-          },
-          orderbook.lastTradedPrice,
-        );
-
-        if (shouldBreak) break;
-
-        firstOrderData = getFirstCreatedOrder(asks.openOrders);
-      }
-
-      bestNextPrice = getNextBestAskPrice(orderbook.asks, bestNextPrice);
-    }
-
-    const averagePriceForFilledQtyOfCurrentOrder =
-      filledQtyForCurrentOrder > 0
-        ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
-        : 0;
-    if (filledQtyForCurrentOrder > 0) {
-      // create position for the current order user as they've got some / all matched
-      const relativeMargin = calculateRelativeMargin(
-        currentOrder.margin,
-        currentOrder.qty,
-        filledQtyForCurrentOrder,
-      );
-      createPosition(
-        userForCurrentOrder,
-        {
-          market: currentOrder.market,
-          type: currentOrder.type,
-          qty: filledQtyForCurrentOrder,
-          margin: relativeMargin,
-          averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-        },
-        orderbook.lastTradedPrice,
-      );
-
-      updateUnrealisedPnLForAllUsers(
-        orderbook.lastTradedPrice,
-        currentOrder.market,
-      );
-    }
-
-    if (remainingQty > 0 && !bestNextPrice) {
-      // cancel the remaining order
-      currentOrder.status = "cancelled";
-    }
-
-    return {
-      filledQty: filledQtyForCurrentOrder,
-      totalPrice: totalPriceForCurrentOrder,
-      averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-      fills: fillsForCurrentOrder,
-    };
-  };
-
-  const matchMarketShortOrder = (
-    currentOrder: TOrder,
-    orderbook: TOrderbook,
-    userForCurrentOrder: TUser,
-  ): TMatchOrderFunctionResponse => {
-    let bestNextPrice = getNextBestBidPrice(orderbook.bids);
-    let remainingQty = currentOrder.qty;
-    // for creating an open order at the end if whole order was not filled
-    let filledQtyForCurrentOrder = 0;
-    // for position's average price
-    let totalPriceForCurrentOrder = 0;
-    const fillsForCurrentOrder: TFill[] = [];
-
-    while (remainingQty > 0 && bestNextPrice) {
-      const bids = orderbook.bids[`${bestNextPrice}`]!;
-      if (bids.availableQty <= 0) {
-        // should not occur i think, 'cause i remove the empty prices
-        bestNextPrice = getNextBestBidPrice(orderbook.bids, bestNextPrice);
-        continue;
-      }
-
-      let firstOrderData = getFirstCreatedOrder(bids.openOrders);
-      while (firstOrderData) {
-        let shouldBreak = false;
-        const { orderIndex: restingOpenOrderIndex, order: restingOpenOrder } =
-          firstOrderData;
-        const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
-        const fill = createFill({
-          maker: restingOpenOrder.userId,
-          taker: userForCurrentOrder.userId,
-          market: currentOrder.market,
-          qty: 0, // <- will update it later in the conditionals
-          price: bestNextPrice,
-          long: restingOpenOrder.userId,
-          short: userForCurrentOrder.userId,
-        });
-        fillsForCurrentOrder.push(fill);
-
-        orderbook.lastTradedPrice = bestNextPrice;
-
-        const userOfRestingOpenOrder = getUserById(restingOpenOrder.userId)!;
-        const { order: userRestingOrder } = getUserOrderById(
-          userOfRestingOpenOrder,
-          restingOpenOrder.orderId,
-        );
+        const matchedRestingOrder: TOpenOrder = restingOpenOrder;
 
         if (availableQty > remainingQty) {
           // the current order can be filled - restingOrder is partially filled
@@ -904,7 +549,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += remainingQty;
 
-          userRestingOrder.status = "partially_filled";
+          matchedRestingOrder.status = "partially_filled";
 
           remainingQty = 0;
           shouldBreak = true;
@@ -919,7 +564,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += remainingQty;
 
-          userRestingOrder.status = "filled";
+          matchedRestingOrder.status = "filled";
 
           // as the resting open order is filled, splice it out
           bids.openOrders.splice(restingOpenOrderIndex, 1);
@@ -942,7 +587,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += availableQty;
 
-          userRestingOrder.status = "filled";
+          matchedRestingOrder.status = "filled";
 
           bids.openOrders.splice(restingOpenOrderIndex, 1);
           if (bids.availableQty <= 0) {
@@ -952,15 +597,15 @@ export function createEngine(store: TStore) {
 
         // create positions for the user whose open order got matched
         const relativeMargin = calculateRelativeMargin(
-          userRestingOrder.margin,
-          userRestingOrder.qty,
+          matchedRestingOrder.margin,
+          matchedRestingOrder.qty,
           fill.qty,
         );
         createPosition(
           userOfRestingOpenOrder,
           {
-            market: userRestingOrder.market,
-            type: userRestingOrder.type,
+            marketId: matchedRestingOrder.marketId,
+            type: matchedRestingOrder.positionType,
             qty: fill.qty,
             margin: relativeMargin,
             averagePrice: bestNextPrice,
@@ -980,18 +625,18 @@ export function createEngine(store: TStore) {
       filledQtyForCurrentOrder > 0
         ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
         : 0;
+    const relativeMargin = calculateRelativeMargin(
+      currentOrder.initialMargin,
+      currentOrder.qty,
+      filledQtyForCurrentOrder,
+    );
     if (filledQtyForCurrentOrder > 0) {
       // create position for the current order user as they've got some / all matched
-      const relativeMargin = calculateRelativeMargin(
-        currentOrder.margin,
-        currentOrder.qty,
-        filledQtyForCurrentOrder,
-      );
       createPosition(
         userForCurrentOrder,
         {
-          market: currentOrder.market,
-          type: currentOrder.type,
+          marketId: currentOrder.marketId,
+          type: currentOrder.positionType,
           qty: filledQtyForCurrentOrder,
           margin: relativeMargin,
           averagePrice: averagePriceForFilledQtyOfCurrentOrder,
@@ -1001,13 +646,42 @@ export function createEngine(store: TStore) {
 
       updateUnrealisedPnLForAllUsers(
         orderbook.lastTradedPrice,
-        currentOrder.market,
+        currentOrder.marketId,
       );
     }
 
     if (remainingQty > 0) {
-      // cancel the remaining order
-      currentOrder.status = "cancelled";
+      if (currentOrder.orderType === "limit") {
+        // add an open order for this user for the currentOrder.price in the asks
+        const newOpenOrder: TOpenOrder = {
+          userId: userForCurrentOrder.userId,
+          qty: currentOrder.qty,
+          filledQty: filledQtyForCurrentOrder,
+          orderId: currentOrder.id,
+          marketId: currentOrder.marketId,
+          positionType: currentOrder.positionType,
+          margin: relativeMargin,
+          status: "open",
+          createdAt: new Date(),
+        };
+
+        const asks = orderbook.asks[`${currentOrder.price}`];
+        const additionalAvailableQty =
+          currentOrder.qty - filledQtyForCurrentOrder;
+        if (!asks) {
+          orderbook.asks[`${currentOrder.price}`] = {
+            availableQty: additionalAvailableQty,
+            openOrders: [newOpenOrder],
+          };
+        } else {
+          asks.availableQty += additionalAvailableQty;
+          asks.openOrders.push(newOpenOrder);
+        }
+      } else {
+        // currentOrder.orderType = "market"
+        // cancel the remaining order
+        currentOrder.status = "cancelled";
+      }
     }
 
     return {
@@ -1015,10 +689,10 @@ export function createEngine(store: TStore) {
       totalPrice: totalPriceForCurrentOrder,
       averagePrice: averagePriceForFilledQtyOfCurrentOrder,
       fills: fillsForCurrentOrder,
+      matchedRestingOrders,
     };
   };
-*/
-  // td:: ask if passing user ids around so that fills can be created is okay or should i be getting the open orders only from the matcher (and probably order indexes also to splice later) and do the updates outside
+
   const matchOrder = (
     order: OrderRecordNumberified,
     orderbook: TOrderbook,
@@ -1027,21 +701,13 @@ export function createEngine(store: TStore) {
     // td:: matchLimitLongOrder && matchMarketLongOrder are identical. similar to matchLimitShortOrder && matchMarketShortOrder
     // * the first diff is that the first while loop has an extra condition which validates the order should be matched only till the bestNextPrice is less than or equal to currentOrder.price, 'cause limit order can be matched to better prices but not worse versus there is no such limit on market orders. they keep matching until there is a next price.
     // * secondly, if there is any remainingQty left, for limit orders, an orderbook entry is created for that price vs the order is cancelled for market orders
-    // --------- try to merge them down
+    // --------- tmerged into one via slippage
 
     let res: TMatchOrderFunctionResponse | null = null;
-    if (order.orderType === "limit") {
-      if (order.positionType === "LONG") {
-        res = matchLimitLongOrder(order, orderbook, user);
-        // } else if (order.positionType === "SHORT") {
-        //   res = matchLimitShortOrder(order, orderbook, user);
-      }
-      // } else if (order.orderType === "market") {
-      //   if (order.positionType === "LONG") {
-      //     res = matchMarketLongOrder(order, orderbook, user);
-      //   } else if (order.positionType === "SHORT") {
-      //     res = matchMarketShortOrder(order, orderbook, user);
-      //   }
+    if (order.positionType === "LONG") {
+      res = matchLongOrder(order, orderbook, user);
+    } else {
+      res = matchShortOrder(order, orderbook, user);
     }
 
     console.dir(store, { depth: 10 });
@@ -1072,8 +738,9 @@ export function createEngine(store: TStore) {
       initialMargin,
     } = payload;
 
-    const normalizedPayload = {
+    const normalizedPayload: OrderRecordNumberified = {
       ...payload,
+      status: "open",
       qty: Number(payload.qty),
       filledQty: Number(payload.filledQty),
       price: Number(payload.price),
@@ -1165,6 +832,22 @@ export function createEngine(store: TStore) {
     if (!entryPrice) {
       throw new Error(`There are no matches available`);
     }
+
+    // this sets the price to be the max allowed price, essentially converting a market order to a limit order
+    if (orderType === "market") {
+      // in case of LONG this'd be the next best ask price & in SHORT, this'll be the next best bid
+      entryPrice = Number(entryPrice);
+
+      // i need to calc the slippage on the best next price + or - depending on the direction
+      const maxSlippageAllowed = normalizedPayload.slippage * 0.01 * entryPrice;
+      if (positionType === "LONG") {
+        entryPrice += maxSlippageAllowed;
+      } else {
+        entryPrice -= maxSlippageAllowed;
+      }
+      normalizedPayload.price = normalizedPayload.slippage;
+    }
+
     // verify if the margin given is within allowed range for the market
     const leverage = isRiskReducingOrder
       ? 0
@@ -1223,6 +906,18 @@ export function createEngine(store: TStore) {
 
       return { userId, available: user.collateral.available };
     } else if (type === "create_order") {
+      // code to init user if missing
+      const { userId } = payload as { userId: string };
+      let user = getUserById(userId);
+      if (!user) {
+        user = {
+          userId,
+          collateral: { available: 0, locked: 0 },
+          positions: [],
+        };
+
+        store.users.set(userId, user);
+      }
       const resp = placeOrder(payload as SelectOrderRecord);
       if (!resp) {
         throw new Error("Something went wrong");
