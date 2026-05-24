@@ -36,6 +36,7 @@ export const createOrderService = ({
     if (!marketRow) {
       throw new NotFoundError("Market does not exist");
     }
+
     const order = await db
       .insert(orders)
       .values({
@@ -52,7 +53,12 @@ export const createOrderService = ({
       })
       .returning()
       .then((res) => res[0]!);
-    return await sendToEngine("create_order", { ...payload, order });
+    const response = await sendToEngine("create_order", { ...order });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
   };
 
   return { onramp, createOrder };

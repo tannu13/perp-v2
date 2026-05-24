@@ -1,22 +1,20 @@
+import type { InsertFillRecord, SelectOrderRecord } from "@repo/db/schema";
 import type {
+  FillRecordNumberified,
+  OrderRecordNumberified,
   TFill,
   TOpenOrder,
-  TOrder,
   TOrderbook,
   TOrderType,
   TPosition,
   TPositionType,
   TStore,
   TUser,
+  TUsers,
 } from "../store";
 import { type TEngineRequestSchema } from "@repo/shared/redis-events";
 
 export function createEngine(store: TStore) {
-  // const onramp = (userId: number, amount: number) => {
-  //   user.collateral.available += amount;
-  //   return user.collateral.available;
-  // };
-
   // for price priority
   const getNextBestAskPrice = (asks: TOrderbook["asks"], startFrom = -1) => {
     let minPrice = Infinity;
@@ -75,60 +73,18 @@ export function createEngine(store: TStore) {
     };
   };
 
-  // const createOrder = (payload: Omit<TOrder, "orderId" | "status">) => {
-  //   // { orderId: 1, market: "SOL", type: "LONG", qty: 10, margin: 500, orderType: "limit", price: 90, status: "filled" }
-  //   const orderId = getNextOrderId();
-  //   const { market, type, qty, margin, price, orderType } = payload;
-  //   const order: TOrder = {
-  //     ...payload,
-  //     orderId,
-  //     status: "open",
-  //   };
-
-  //   return order;
-  // };
-
-  const getUserOrderById = (user: TUser, orderId: number) => {
-    const orderIndex = user.orders.findIndex(
-      (order) => order.orderId === orderId,
-    );
-
-    return {
-      orderIndex: orderIndex,
-      order: user.orders[orderIndex]!,
-    };
-  };
-
-  const createFill = ({
-    maker,
-    taker,
-    market,
-    qty,
-    price,
-    long,
-    short,
-  }: TFill) => {
-    // { maker: 1, taker: 2, market: "SOL", qty: 10, price: 90, long: 1, short: 2}
-    const fill: TFill = {
-      maker,
-      taker,
-      market,
-      qty,
-      price,
-      long,
-      short,
-    };
-
-    store.fills.push(fill);
-    return fill;
+  const getUserById = (userId: string) => {
+    return store.users.get(userId);
   };
 
   const getRoudedNumber = (numberToRound: number) => {
     return +numberToRound.toFixed(2);
   };
 
-  const getUserMarketPosition = (positions: TPosition[], market: string) => {
-    const positionIndex = positions.findIndex((pos) => pos.market === market);
+  const getUserMarketPosition = (positions: TPosition[], marketId: string) => {
+    const positionIndex = positions.findIndex(
+      (pos) => pos.marketId === marketId,
+    );
     return positionIndex === -1
       ? null
       : { positionIndex, position: positions[positionIndex]! };
@@ -193,9 +149,12 @@ export function createEngine(store: TStore) {
     // { market: "SOL", type: "LONG", qty: 10, margin: 500, liquidationPrice: 80, averagePrice: 90 },
     // one market can have only one entry in positions - this is called One-Way Position Netting
 
-    const { market, type, qty, margin, averagePrice } = payload;
+    const { marketId, type, qty, margin, averagePrice } = payload;
 
-    const existingPositionData = getUserMarketPosition(user.positions, market);
+    const existingPositionData = getUserMarketPosition(
+      user.positions,
+      marketId,
+    );
     if (!existingPositionData) {
       const liquidationPrice = calculateLiquidationPrice({
         margin,
@@ -298,14 +257,11 @@ export function createEngine(store: TStore) {
 
   const updateUnrealisedPnLForAllUsers = (
     lastTradedPrice: number,
-    market: string,
+    marketId: string,
   ) => {
-    const usersLen = store.users.length;
-    for (let i = 0; i < usersLen; i++) {
-      const user = store.users[i]!;
-
+    for (const user of store.users.values()) {
       const userMarketPosition = user.positions.find(
-        (p) => p.market === market,
+        (p) => p.marketId === marketId,
       );
       if (!userMarketPosition) continue;
 
@@ -325,11 +281,12 @@ export function createEngine(store: TStore) {
     filledQty: number;
     totalPrice: number;
     averagePrice: number;
-    fills: TFill[];
+    fills: FillRecordNumberified[];
+    matchedRestingOrders: TOpenOrder[];
   };
-  /*
+
   const matchLimitLongOrder = (
-    currentOrder: TOrder,
+    currentOrder: OrderRecordNumberified,
     orderbook: TOrderbook,
     userForCurrentOrder: TUser,
   ): TMatchOrderFunctionResponse => {
@@ -339,7 +296,9 @@ export function createEngine(store: TStore) {
     let filledQtyForCurrentOrder = 0;
     // for position's average price
     let totalPriceForCurrentOrder = 0;
-    const fillsForCurrentOrder: TFill[] = [];
+
+    const matchedRestingOrders: TOpenOrder[] = [];
+    const fillsForCurrentOrder: FillRecordNumberified[] = [];
     while (
       remainingQty > 0 &&
       bestNextPrice &&
@@ -358,24 +317,22 @@ export function createEngine(store: TStore) {
         const { orderIndex: restingOpenOrderIndex, order: restingOpenOrder } =
           firstOrderData;
         const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
-        const fill = createFill({
-          maker: restingOpenOrder.userId,
-          taker: userForCurrentOrder.userId,
-          market: currentOrder.market,
+
+        const fill: FillRecordNumberified = {
+          makerId: restingOpenOrder.userId,
+          takerId: userForCurrentOrder.userId,
+          marketId: currentOrder.marketId,
           qty: 0, // <- will update it later in the conditionals
           price: bestNextPrice,
-          long: userForCurrentOrder.userId,
-          short: restingOpenOrder.userId,
-        });
+          makerOrderId: restingOpenOrder.orderId,
+          takerOrderId: currentOrder.userId,
+        };
         fillsForCurrentOrder.push(fill);
 
         orderbook.lastTradedPrice = bestNextPrice;
 
         const userOfRestingOpenOrder = getUserById(restingOpenOrder.userId)!;
-        const { order: userRestingOrder } = getUserOrderById(
-          userOfRestingOpenOrder,
-          restingOpenOrder.orderId,
-        );
+        const matchedRestingOrder: TOpenOrder = restingOpenOrder;
 
         if (availableQty > remainingQty) {
           // the current order can be filled - restingOrder is partially filled
@@ -388,7 +345,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += remainingQty;
 
-          userRestingOrder.status = "partially_filled";
+          matchedRestingOrder.status = "partially_filled";
 
           remainingQty = 0;
           shouldBreak = true;
@@ -403,7 +360,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += remainingQty;
 
-          userRestingOrder.status = "filled";
+          matchedRestingOrder.status = "filled";
 
           // as the resting open order is filled, splice it out
           asks.openOrders.splice(restingOpenOrderIndex, 1);
@@ -426,7 +383,7 @@ export function createEngine(store: TStore) {
 
           restingOpenOrder.filledQty += availableQty;
 
-          userRestingOrder.status = "filled";
+          matchedRestingOrder.status = "filled";
 
           asks.openOrders.splice(restingOpenOrderIndex, 1);
           if (asks.availableQty <= 0) {
@@ -436,15 +393,15 @@ export function createEngine(store: TStore) {
 
         // create positions for the user whose open order got matched
         const relativeMargin = calculateRelativeMargin(
-          userRestingOrder.margin,
-          userRestingOrder.qty,
+          matchedRestingOrder.margin,
+          matchedRestingOrder.qty,
           fill.qty,
         );
         createPosition(
           userOfRestingOpenOrder,
           {
-            market: userRestingOrder.market,
-            type: userRestingOrder.type,
+            marketId: matchedRestingOrder.marketId,
+            type: matchedRestingOrder.positionType,
             qty: fill.qty,
             margin: relativeMargin,
             averagePrice: bestNextPrice,
@@ -464,18 +421,18 @@ export function createEngine(store: TStore) {
       filledQtyForCurrentOrder > 0
         ? getRoudedNumber(totalPriceForCurrentOrder / filledQtyForCurrentOrder)
         : 0;
+    const relativeMargin = calculateRelativeMargin(
+      currentOrder.initialMargin,
+      currentOrder.qty,
+      filledQtyForCurrentOrder,
+    );
     if (filledQtyForCurrentOrder > 0) {
       // create position for the current order user as they've got some / all matched
-      const relativeMargin = calculateRelativeMargin(
-        currentOrder.margin,
-        currentOrder.qty,
-        filledQtyForCurrentOrder,
-      );
       createPosition(
         userForCurrentOrder,
         {
-          market: currentOrder.market,
-          type: currentOrder.type,
+          marketId: currentOrder.marketId,
+          type: currentOrder.positionType,
           qty: filledQtyForCurrentOrder,
           margin: relativeMargin,
           averagePrice: averagePriceForFilledQtyOfCurrentOrder,
@@ -485,7 +442,7 @@ export function createEngine(store: TStore) {
 
       updateUnrealisedPnLForAllUsers(
         orderbook.lastTradedPrice,
-        currentOrder.market,
+        currentOrder.marketId,
       );
     }
 
@@ -495,7 +452,11 @@ export function createEngine(store: TStore) {
         userId: userForCurrentOrder.userId,
         qty: currentOrder.qty,
         filledQty: filledQtyForCurrentOrder,
-        orderId: currentOrder.orderId,
+        orderId: currentOrder.id,
+        marketId: currentOrder.marketId,
+        positionType: currentOrder.positionType,
+        margin: relativeMargin,
+        status: "open",
         createdAt: new Date(),
       };
 
@@ -518,9 +479,10 @@ export function createEngine(store: TStore) {
       totalPrice: totalPriceForCurrentOrder,
       averagePrice: averagePriceForFilledQtyOfCurrentOrder,
       fills: fillsForCurrentOrder,
+      matchedRestingOrders,
     };
   };
-
+  /*
   const matchLimitShortOrder = (
     currentOrder: TOrder,
     orderbook: TOrderbook,
@@ -1057,69 +1019,95 @@ export function createEngine(store: TStore) {
   };
 */
   // td:: ask if passing user ids around so that fills can be created is okay or should i be getting the open orders only from the matcher (and probably order indexes also to splice later) and do the updates outside
-  const matchOrder = (order: TOrder, orderbook: TOrderbook, user: TUser) => {
+  const matchOrder = (
+    order: OrderRecordNumberified,
+    orderbook: TOrderbook,
+    user: TUser,
+  ) => {
     // td:: matchLimitLongOrder && matchMarketLongOrder are identical. similar to matchLimitShortOrder && matchMarketShortOrder
     // * the first diff is that the first while loop has an extra condition which validates the order should be matched only till the bestNextPrice is less than or equal to currentOrder.price, 'cause limit order can be matched to better prices but not worse versus there is no such limit on market orders. they keep matching until there is a next price.
     // * secondly, if there is any remainingQty left, for limit orders, an orderbook entry is created for that price vs the order is cancelled for market orders
     // --------- try to merge them down
 
     let res: TMatchOrderFunctionResponse | null = null;
-    // if (order.orderType === "limit") {
-    //   if (order.type === "LONG") {
-    //     res = matchLimitLongOrder(order, orderbook, user);
-    //   } else if (order.type === "SHORT") {
-    //     res = matchLimitShortOrder(order, orderbook, user);
-    //   }
-    // } else if (order.orderType === "market") {
-    //   if (order.type === "LONG") {
-    //     res = matchMarketLongOrder(order, orderbook, user);
-    //   } else if (order.type === "SHORT") {
-    //     res = matchMarketShortOrder(order, orderbook, user);
-    //   }
-    // }
+    if (order.orderType === "limit") {
+      if (order.positionType === "LONG") {
+        res = matchLimitLongOrder(order, orderbook, user);
+        // } else if (order.positionType === "SHORT") {
+        //   res = matchLimitShortOrder(order, orderbook, user);
+      }
+      // } else if (order.orderType === "market") {
+      //   if (order.positionType === "LONG") {
+      //     res = matchMarketLongOrder(order, orderbook, user);
+      //   } else if (order.positionType === "SHORT") {
+      //     res = matchMarketShortOrder(order, orderbook, user);
+      //   }
+    }
 
-    // console.dir(store, { depth: 10 });
-    // if (res !== null) {
-    //   return {
-    //     orderId: order.orderId,
-    //     status: order.status,
-    //     filledQty: res.filledQty,
-    //     averagePrice: res.averagePrice,
-    //     fills: res.fills,
-    //   };
-    // }
+    console.dir(store, { depth: 10 });
+    if (res !== null) {
+      return {
+        orderId: order.id,
+        status: order.status,
+        filledQty: res.filledQty,
+        averagePrice: res.averagePrice,
+        fills: res.fills,
+      };
+    }
 
     return null;
   };
 
-  /*
-  const placeOrder = (userId: number, payload: TCreateOrderSchema) => {
-    const { price, qty, equity, type, market, orderType } = payload;
+  const placeOrder = (payload: SelectOrderRecord) => {
+    let {
+      userId,
+      marketId,
+      positionType,
+      orderType,
+      status,
+      qty,
+      filledQty,
+      price,
+      slippage,
+      initialMargin,
+    } = payload;
 
-    // changing equity to margin as it clicks more
-    let margin = equity;
+    const normalizedPayload = {
+      ...payload,
+      qty: Number(payload.qty),
+      filledQty: Number(payload.filledQty),
+      price: Number(payload.price),
+      slippage: Number(payload.slippage),
+      initialMargin: Number(payload.initialMargin),
+    };
 
-    const orderbook = store.orderbooks[market];
+    const orderbook = store.orderbooks[marketId];
     if (!orderbook) {
-      throw new Error(`Unsupported market symbol ${market}`);
+      throw new Error(`Unsupported market symbol`);
     }
 
-    const user = getUserById(userId)!;
-    const existingPositionData = getUserMarketPosition(user.positions, market);
+    const user = getUserById(userId);
+    if (!user) {
+      throw new Error("User details does not exist");
+    }
+    const existingPositionData = getUserMarketPosition(
+      user.positions,
+      marketId,
+    );
     let isRiskReducingOrder = false;
-    if (!margin) {
+    if (!initialMargin) {
       if (!existingPositionData) {
         throw new Error(
-          `Margin required as there is no open position for market: ${market}`,
+          `Margin required as there is no open position for this market`,
         );
       } else {
         if (
-          existingPositionData.position.type === type ||
+          existingPositionData.position.type === positionType ||
           existingPositionData.position.qty <
-            qty - existingPositionData.position.qty
+            normalizedPayload.qty - existingPositionData.position.qty
         ) {
           throw new Error(
-            `Margin required as this is a risk increasing order for market: ${market}`,
+            `Margin required as this is a risk increasing order for this market`,
           );
         }
 
@@ -1133,7 +1121,7 @@ export function createEngine(store: TStore) {
         // figure out how much is the risk gonna be reduced by or what could be the opposite margin
         // making margin 0 as it is not required.
         isRiskReducingOrder = true;
-        margin = 0;
+        normalizedPayload.initialMargin = 0;
 
         // if (existingPositionData.position.qty === qty) {
         //   margin = existingPositionData.position.margin;
@@ -1148,21 +1136,21 @@ export function createEngine(store: TStore) {
       }
     } else if (existingPositionData) {
       if (
-        existingPositionData.position.type !== type &&
+        existingPositionData.position.type !== positionType &&
         existingPositionData.position.qty >=
-          qty - existingPositionData.position.qty
+          normalizedPayload.qty - existingPositionData.position.qty
       ) {
         // reached here, means that this is a risk reducing order, i.e. it is an opposite side order to the existing one && the new qty is more than or equal to existingPosition's qty
         // figure out how much is the risk gonna be reduced by or what could be the opposite margin
         isRiskReducingOrder = true;
-        margin = 0;
+        normalizedPayload.initialMargin = 0;
       }
     }
 
     // margin should've been defined by now
     // margin = margin!;
 
-    if (user.collateral.available < margin) {
+    if (user.collateral.available < normalizedPayload.initialMargin) {
       throw new Error(`User does not have available margin`);
     }
 
@@ -1171,39 +1159,31 @@ export function createEngine(store: TStore) {
     let entryPrice =
       orderType === "limit"
         ? price
-        : type === "LONG"
+        : positionType === "LONG"
           ? getNextBestAskPrice(orderbook.asks)
           : getNextBestBidPrice(orderbook.bids);
     if (!entryPrice) {
       throw new Error(`There are no matches available`);
     }
     // verify if the margin given is within allowed range for the market
-    const leverage = isRiskReducingOrder ? 0 : (entryPrice * qty) / margin;
+    const leverage = isRiskReducingOrder
+      ? 0
+      : (normalizedPayload.price * normalizedPayload.qty) /
+        normalizedPayload.initialMargin;
     if (orderbook.allowedLeverage < leverage) {
       throw new Error(`Leverage not supported`);
     }
 
-    if (!isRiskReducingOrder && margin > 0) {
-      user.collateral.available -= margin;
-      user.collateral.locked += margin;
+    if (!isRiskReducingOrder && normalizedPayload.initialMargin > 0) {
+      user.collateral.available -= normalizedPayload.initialMargin;
+      user.collateral.locked += normalizedPayload.initialMargin;
     }
 
-    const order = createOrder({
-      market,
-      type,
-      qty,
-      margin,
-      price: entryPrice,
-      orderType,
-    });
-    user.orders.push(order);
-
-    return matchOrder(order, orderbook, user);
+    return matchOrder(normalizedPayload, orderbook, user);
   };
   const cancelOrder = () => {
     // td:: if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward
   };
-  */
 
   //
   const handle = ({
@@ -1215,26 +1195,39 @@ export function createEngine(store: TStore) {
   > => {
     if (type === "init_balance") {
       const { userId } = payload as { userId: string };
-      let balance = store.balances.get(userId);
-      if (!balance) {
-        balance = { available: 0, locked: 0 };
-        store.balances.set(userId, balance);
+      let user = getUserById(userId);
+      if (!user) {
+        user = {
+          userId,
+          collateral: { available: 0, locked: 0 },
+          positions: [],
+        };
+
+        store.users.set(userId, user);
       }
 
-      return { userId, balance };
+      return { userId, balance: user.collateral.available };
     } else if (type === "onramp") {
       const { userId, amount } = payload as { userId: string; amount: number };
-      let balance = store.balances.get(userId);
-      if (!balance) {
-        balance = { available: amount, locked: 0 };
-        store.balances.set(userId, balance);
+      let user = getUserById(userId);
+      if (!user) {
+        user = {
+          userId,
+          collateral: { available: amount, locked: 0 },
+          positions: [],
+        };
+        store.users.set(userId, user);
       } else {
-        balance.available += amount;
+        user.collateral.available += amount;
       }
 
-      return { userId, available: balance.available };
+      return { userId, available: user.collateral.available };
     } else if (type === "create_order") {
-      return payload;
+      const resp = placeOrder(payload as SelectOrderRecord);
+      if (!resp) {
+        throw new Error("Something went wrong");
+      }
+      return resp;
     }
     return {
       v: "b",

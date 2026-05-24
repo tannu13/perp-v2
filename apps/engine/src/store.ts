@@ -1,9 +1,20 @@
+import type { InsertFillRecord, SelectOrderRecord } from "@repo/db/schema";
+
 export type TPositionType = "LONG" | "SHORT";
 export type TOrderType = "market" | "limit";
 export type TOrderStatus = "open" | "partially_filled" | "filled" | "cancelled";
 
+type StringNumberFields = "qty" | "filledQty" | "price" | "initialMargin";
+
+type Numberified<T> = {
+  [K in keyof T]: K extends StringNumberFields ? number : T[K];
+};
+
+export type OrderRecordNumberified = Numberified<SelectOrderRecord>;
+export type FillRecordNumberified = Numberified<InsertFillRecord>;
+
 export type TPosition = {
-  market: string;
+  marketId: string;
   type: TPositionType;
   qty: number;
   margin: number;
@@ -17,162 +28,93 @@ type TCollateral = {
   locked: number;
 };
 
-export type TOrder = {
-  orderId: number;
-  market: string;
-  type: TPositionType;
-  qty: number;
-  margin: number;
-  orderType: TOrderType;
-  price: number;
-  status: TOrderStatus;
-};
+// export type TOrder = {
+//   orderId: number;
+//   market: string;
+//   type: TPositionType;
+//   qty: number;
+//   margin: number;
+//   orderType: TOrderType;
+//   price: number;
+//   status: TOrderStatus;
+// };
 export type TUser = {
-  userId: number;
-  username: string;
-  password: string;
+  userId: string;
   collateral: TCollateral;
   positions: TPosition[];
-  orders: TOrder[];
 };
-const users: TUser[] = [
-  {
-    userId: 1,
-    username: "harkirat",
-    password: "123123",
-    // in-memory store
-    collateral: {
-      available: 2000,
-      locked: 1000,
+export type TUsers = Map<string, TUser>;
+const users: TUsers = new Map([
+  [
+    "be064682-faac-490c-9c35-a71c9ad180be",
+    {
+      userId: "be064682-faac-490c-9c35-a71c9ad180be",
+      collateral: {
+        available: 2000,
+        locked: 1000,
+      },
+      positions: [
+        {
+          marketId: "SOL",
+          type: "LONG",
+          qty: 10,
+          margin: 500,
+          liquidationPrice: 80,
+          averagePrice: 90,
+        },
+        {
+          marketId: "ETH",
+          type: "SHORT",
+          qty: 1,
+          margin: 500,
+          liquidationPrice: 2000,
+          averagePrice: 1900,
+        },
+      ],
     },
-    // in-memory store
-    positions: [
-      {
-        market: "SOL",
-        type: "LONG",
-        qty: 10,
-        margin: 500,
-        liquidationPrice: 80,
-        averagePrice: 90,
+  ],
+  [
+    "oidfwjoewfewfokvf",
+    {
+      userId: "oidfwjoewfewfokvf",
+      collateral: {
+        available: 2000,
+        locked: 2000,
       },
-      {
-        market: "ETH",
-        type: "SHORT",
-        qty: 1,
-        margin: 500,
-        liquidationPrice: 2000,
-        averagePrice: 1900,
-      },
-    ],
-    // save to db
-    orders: [
-      {
-        orderId: 1,
-        market: "SOL",
-        type: "LONG",
-        qty: 10,
-        margin: 500,
-        orderType: "limit",
-        price: 90,
-        status: "filled",
-      },
-      {
-        orderId: 2,
-        market: "ETH",
-        type: "SHORT",
-        qty: 10,
-        margin: 500,
-        orderType: "limit",
-        price: 1900,
-        status: "filled",
-      },
-      {
-        orderId: 3,
-        market: "BTC",
-        type: "LONG",
-        qty: 10,
-        margin: 500,
-        orderType: "limit",
-        price: 1900,
-        status: "cancelled",
-      },
-    ],
-  },
-  {
-    userId: 2,
-    username: "raman",
-    password: "123123",
-    // in-memory store
-    collateral: {
-      available: 2000,
-      locked: 2000,
+      positions: [
+        {
+          marketId: "SOL",
+          type: "SHORT",
+          qty: 10,
+          margin: 1000,
+          liquidationPrice: 80,
+          pnL: 200,
+          averagePrice: 90,
+        },
+        {
+          marketId: "ETH",
+          type: "LONG",
+          qty: 1,
+          margin: 1000,
+          liquidationPrice: 2000,
+          pnL: -100,
+          averagePrice: 1900,
+        },
+      ],
     },
-    // in-memory store
-    positions: [
-      {
-        market: "SOL",
-        type: "SHORT",
-        qty: 10,
-        margin: 1000,
-        liquidationPrice: 80,
-        pnL: 200,
-        averagePrice: 90,
-      },
-      {
-        market: "ETH",
-        type: "LONG",
-        qty: 1,
-        margin: 1000,
-        liquidationPrice: 2000,
-        pnL: -100,
-        averagePrice: 1900,
-      },
-    ],
-    // save to db
-    orders: [
-      {
-        orderId: 10,
-        market: "SOL",
-        type: "SHORT",
-        qty: 10,
-        margin: 500,
-        orderType: "market",
-        price: 90,
-        status: "filled",
-      },
-      {
-        orderId: 11,
-        market: "ETH",
-        type: "LONG",
-        qty: 10,
-        margin: 500,
-        orderType: "market",
-        price: 1900,
-        status: "filled",
-      },
-      {
-        orderId: 12,
-        market: "ZEC",
-        type: "LONG",
-        qty: 10,
-        margin: 500,
-        orderType: "limit",
-        price: 1900,
-        status: "open",
-      },
-    ],
-  },
-];
-
-// userid - available, locked
-export type TBalance = Map<string, TCollateral>;
+  ],
+]);
 
 // in-memory store but needs more data in them so that user orders aren't needed
 export type TOpenOrder = {
-  userId: number;
+  userId: string;
   qty: number;
   filledQty: number;
-  orderId: number;
+  orderId: string;
+  status: TOrderStatus;
+  margin: number;
+  marketId: string;
+  positionType: TPositionType;
   createdAt: Date;
 };
 // in-memory store
@@ -222,9 +164,8 @@ const fills: TFill[] = [
 ];
 
 export type TStore = {
-  balances: TBalance;
   orderbooks: TOrderbooks;
-  users: TUser[];
+  users: TUsers;
   fills: TFill[];
   totalSystemDeposits: number;
   lastUserId: number;
@@ -233,7 +174,7 @@ export type TStore = {
 
 const SUPPORTED_ASSETS = {
   SOL: {
-    asset: "SOL",
+    asset: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",
     lastTradedPrice: 90,
     indexPrice: 85,
     allowedLeverage: 30,
@@ -263,60 +204,9 @@ export function createExchangeStore(): TStore {
       allowedLeverage: obj.allowedLeverage,
     };
   });
-  const users: TUser[] = [];
   return {
-    balances: new Map(),
+    users,
     orderbooks,
-    users: [
-      {
-        userId: 1,
-        username: "tuser1",
-        password:
-          "$2b$10$0sYC6b1Rhd96R0fhNxGte.k7csXKUTnG4EWoV/F6yit0ZdB0R1Cdi",
-        collateral: {
-          available: 10000,
-          locked: 0,
-        },
-        orders: [],
-        positions: [],
-      },
-      {
-        userId: 2,
-        username: "tuser2",
-        password:
-          "$2b$10$UMWWSKrdbHw0Cory4VGYMuxi2obssA1e2SoOlefGUBBnuREGnvl5y",
-        collateral: {
-          available: 10000,
-          locked: 0,
-        },
-        orders: [],
-        positions: [],
-      },
-      {
-        userId: 3,
-        username: "tuser3",
-        password:
-          "$2b$10$.otorzN4C7zIxhS7AL1gnOx8C1B8izsWq/XGzdT62vcNdh3iS7AWS",
-        collateral: {
-          available: 10000,
-          locked: 0,
-        },
-        orders: [],
-        positions: [],
-      },
-      {
-        userId: 4,
-        username: "tuser4",
-        password:
-          "$2b$10$LkVSdxMsg/vPgeeyIyUQS.GaxqZ6vyF8oIDhdETVS047F6CnAtXvy",
-        collateral: {
-          available: 10000,
-          locked: 0,
-        },
-        orders: [],
-        positions: [],
-      },
-    ],
     fills: [],
     totalSystemDeposits: 0,
     lastUserId: 4,

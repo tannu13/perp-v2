@@ -62,6 +62,7 @@ export const orders = pgTable("orders", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+export type SelectOrderRecord = typeof orders.$inferSelect;
 
 export const fills = pgTable("fills", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -74,8 +75,8 @@ export const fills = pgTable("fills", {
   marketId: uuid("market_id")
     .notNull()
     .references(() => markets.id),
-  qty: varchar("qty", { length: 80 }),
-  price: varchar("price", { length: 80 }),
+  qty: varchar("qty", { length: 80 }).notNull(),
+  price: varchar("price", { length: 80 }).notNull(),
   makerOrderId: uuid("maker_order_id")
     .notNull()
     .references(() => orders.id),
@@ -84,6 +85,7 @@ export const fills = pgTable("fills", {
     .references(() => orders.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+export type InsertFillRecord = typeof fills.$inferInsert;
 
 export const userRelations = relations(users, ({ many }) => ({
   orders: many(orders),
