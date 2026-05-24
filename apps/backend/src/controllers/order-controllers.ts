@@ -48,6 +48,26 @@ export const createOrderController = (services: TService) => {
     return res.status(200).json(response);
   };
 
+  const getOpenOrdersForMarket = async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const marketId = req.params.marketId as string;
+    const response = await services.getOpenOrdersForMarket(userId, marketId);
+    return res.status(200).json(response);
+  };
+
+  const getOrdersForMarket = async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const marketId = req.params.marketId as string;
+    const response = await services.getOrdersForMarket(userId, marketId);
+    return res.status(200).json(response);
+  };
+
+  const getFills = async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const response = await services.getFills(userId);
+    return res.status(200).json(response);
+  };
+
   return {
     onramp,
     createOrder,
@@ -55,5 +75,8 @@ export const createOrderController = (services: TService) => {
     getBalances,
     getOpenPositionsForMarket,
     getClosedPositionsForMarket,
+    getOpenOrdersForMarket,
+    getOrdersForMarket,
+    getFills,
   };
 };

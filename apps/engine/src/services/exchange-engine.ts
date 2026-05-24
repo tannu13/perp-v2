@@ -985,6 +985,16 @@ export function createEngine(store: TStore) {
     return { closedPositions: marketPositions };
   };
 
+  const getOpenOrdersForMarket = (userId: string, marketId: string) => {
+    const orderbook = store.orderbooks[marketId];
+    const user = getUserById(userId);
+    if (!orderbook || !user) {
+      throw new Error("No open orders");
+    }
+
+    orderbook.bids;
+  };
+
   //
   const handle = ({
     payload,
@@ -1076,10 +1086,7 @@ export function createEngine(store: TStore) {
       };
       return getClosedPositionsForMarket(userId, marketId);
     }
-    return {
-      v: "b",
-      w: "d",
-    };
+    throw new Error("Unsupported request type");
   };
   return { handle };
 }

@@ -1,7 +1,7 @@
 import type { TCreateOrderSchema } from "@repo/shared";
 import type { TComms } from "./backend-comms";
 import db, { eq } from "@repo/db";
-import { orders } from "@repo/db/schema";
+import { orders, orderStatusesEnum } from "@repo/db/schema";
 import { InvalidRequestError, NotFoundError } from "../errors/custom-errors";
 
 export const createOrderService = ({
@@ -114,6 +114,40 @@ export const createOrderService = ({
     return response.data;
   };
 
+  const getOpenOrdersForMarket = async (userId: string, marketId: string) => {
+    const activeStatuses = orderStatusesEnum.enumValues.filter(
+      (status) => status !== "cancelled",
+    );
+    const ordersData = await db.query.orders.findMany({
+      where: (orderRecord, { eq, and, inArray }) =>
+        and(
+          eq(orderRecord.userId, userId),
+          eq(orderRecord.marketId, marketId),
+          inArray(orderRecord.status, activeStatuses),
+        ),
+    });
+
+    return { orders: ordersData };
+  };
+
+  const getOrdersForMarket = async (userId: string, marketId: string) => {
+    const ordersData = await db.query.orders.findMany({
+      where: (orderRecord, { eq, and }) =>
+        and(eq(orderRecord.userId, userId), eq(orderRecord.marketId, marketId)),
+    });
+
+    return { orders: ordersData };
+  };
+
+  const getFills = async (userId: string) => {
+    const fillsData = await db.query.fills.findMany({
+      where: (fillRecord, { eq, or }) =>
+        or(eq(fillRecord.makerId, userId), eq(fillRecord.takerId, userId)),
+    });
+
+    return { fills: fillsData };
+  };
+
   return {
     onramp,
     createOrder,
@@ -121,5 +155,8 @@ export const createOrderService = ({
     getBalances,
     getOpenPositionsForMarket,
     getClosedPositionsForMarket,
+    getOpenOrdersForMarket,
+    getOrdersForMarket,
+    getFills,
   };
 };
