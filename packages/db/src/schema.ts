@@ -8,6 +8,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
 export const positionTypesEnum = pgEnum("position_type", ["LONG", "SHORT"]);
 export const orderTypesEnum = pgEnum("order_type", ["market", "limit"]);
@@ -18,6 +19,7 @@ export const orderStatusesEnum = pgEnum("status", [
   "filled",
   "cancelled",
 ]);
+export type TOrderStatusesEnum = (typeof orderStatusesEnum.enumValues)[number];
 export const users = pgTable(
   "users",
   {
@@ -63,6 +65,8 @@ export const orders = pgTable("orders", {
     .$onUpdate(() => new Date()),
 });
 export type SelectOrderRecord = typeof orders.$inferSelect;
+export type InsertOrderRecord = typeof orders.$inferInsert;
+export const SelectOrderSchema = createSelectSchema(orders);
 
 export const fills = pgTable("fills", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -86,6 +90,7 @@ export const fills = pgTable("fills", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type InsertFillRecord = typeof fills.$inferInsert;
+export const InsertFillSchema = createInsertSchema(fills);
 
 export const userRelations = relations(users, ({ many }) => ({
   orders: many(orders),

@@ -1,4 +1,8 @@
-import type { InsertFillRecord, SelectOrderRecord } from "@repo/db/schema";
+import type {
+  InsertFillRecord,
+  SelectOrderRecord,
+  TOrderStatusesEnum,
+} from "@repo/db/schema";
 import type {
   FillRecordNumberified,
   OrderRecordNumberified,
@@ -13,7 +17,11 @@ import type {
   TUser,
   TUsers,
 } from "../store";
-import { type TEngineRequestSchema } from "@repo/shared/redis-events";
+import {
+  type TEngineRequestSchema,
+  type TOrderDataForWriterSchema,
+  type TWriterSchema,
+} from "@repo/shared/redis-events";
 
 export function createEngine(store: TStore) {
   // for price priority
@@ -71,6 +79,14 @@ export function createEngine(store: TStore) {
     return {
       orderIndex: minIndex,
       order: firstOrder,
+    };
+  };
+
+  const stringifyFill = (fill: FillRecordNumberified): InsertFillRecord => {
+    return {
+      ...fill,
+      qty: `${fill.qty}`,
+      price: `${fill.price}`,
     };
   };
 
@@ -282,11 +298,15 @@ export function createEngine(store: TStore) {
   };
 
   type TMatchOrderFunctionResponse = {
-    filledQty: number;
-    totalPrice: number;
-    averagePrice: number;
-    fills: FillRecordNumberified[];
-    matchedRestingOrders: TOpenOrder[];
+    backend: {
+      orderId: string;
+      status: TOrderStatusesEnum;
+      filledQty: number;
+      totalPrice: number;
+      averagePrice: number;
+      fills: FillRecordNumberified[];
+    };
+    writer: TWriterSchema;
   };
 
   const matchLongOrder = (
@@ -301,7 +321,7 @@ export function createEngine(store: TStore) {
     // for position's average price
     let totalPriceForCurrentOrder = 0;
 
-    const matchedRestingOrders: TOpenOrder[] = [];
+    const orderUpdatesForWriter: TOrderDataForWriterSchema[] = [];
     const fillsForCurrentOrder: FillRecordNumberified[] = [];
     while (
       remainingQty > 0 &&
@@ -329,7 +349,7 @@ export function createEngine(store: TStore) {
           qty: 0, // <- will update it later in the conditionals
           price: bestNextPrice,
           makerOrderId: restingOpenOrder.orderId,
-          takerOrderId: currentOrder.userId,
+          takerOrderId: currentOrder.id,
         };
         fillsForCurrentOrder.push(fill);
 
@@ -422,6 +442,13 @@ export function createEngine(store: TStore) {
           );
         restingOpenOrder.margin = relativeMarginForRemainingQtyOfRestingOrder;
 
+        orderUpdatesForWriter.push({
+          orderId: matchedRestingOrder.orderId,
+          userId: matchedRestingOrder.userId,
+          status: matchedRestingOrder.status,
+          filledQty: restingOpenOrder.filledQty,
+        });
+
         if (shouldBreak) break;
 
         firstOrderData = getFirstCreatedOrder(asks.openOrders);
@@ -461,6 +488,9 @@ export function createEngine(store: TStore) {
 
     if (remainingQty > 0) {
       if (currentOrder.orderType === "limit") {
+        if (currentOrder.status === "pending") {
+          currentOrder.status = "open";
+        }
         const relativeMarginForRemainingQty = calculateRelativeMargin(
           currentOrder.initialMargin,
           currentOrder.qty,
@@ -497,13 +527,32 @@ export function createEngine(store: TStore) {
         currentOrder.status = "cancelled";
       }
     }
+    orderUpdatesForWriter.push({
+      orderId: currentOrder.id,
+      userId: currentOrder.userId,
+      status: currentOrder.status,
+      filledQty: currentOrder.filledQty,
+    });
 
     return {
-      filledQty: filledQtyForCurrentOrder,
-      totalPrice: totalPriceForCurrentOrder,
-      averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-      fills: fillsForCurrentOrder,
-      matchedRestingOrders,
+      backend: {
+        orderId: currentOrder.id,
+        status: currentOrder.status,
+        filledQty: filledQtyForCurrentOrder,
+        totalPrice: totalPriceForCurrentOrder,
+        averagePrice: averagePriceForFilledQtyOfCurrentOrder,
+        fills: fillsForCurrentOrder,
+      },
+      writer: [
+        {
+          table: "fills",
+          data: fillsForCurrentOrder.map((f) => stringifyFill(f)),
+        },
+        {
+          table: "orders",
+          data: orderUpdatesForWriter,
+        },
+      ],
     };
   };
 
@@ -519,7 +568,7 @@ export function createEngine(store: TStore) {
     // for position's average price
     let totalPriceForCurrentOrder = 0;
 
-    const matchedRestingOrders: TOpenOrder[] = [];
+    const orderUpdatesForWriter: TOrderDataForWriterSchema[] = [];
     const fillsForCurrentOrder: FillRecordNumberified[] = [];
     while (
       remainingQty > 0 &&
@@ -547,7 +596,7 @@ export function createEngine(store: TStore) {
           qty: 0, // <- will update it later in the conditionals
           price: bestNextPrice,
           makerOrderId: restingOpenOrder.orderId,
-          takerOrderId: currentOrder.userId,
+          takerOrderId: currentOrder.id,
         };
         fillsForCurrentOrder.push(fill);
 
@@ -640,6 +689,13 @@ export function createEngine(store: TStore) {
           );
         restingOpenOrder.margin = relativeMarginForRemainingQtyOfRestingOrder;
 
+        orderUpdatesForWriter.push({
+          orderId: matchedRestingOrder.orderId,
+          userId: matchedRestingOrder.userId,
+          status: matchedRestingOrder.status,
+          filledQty: restingOpenOrder.filledQty,
+        });
+
         if (shouldBreak) break;
 
         firstOrderData = getFirstCreatedOrder(bids.openOrders);
@@ -716,12 +772,32 @@ export function createEngine(store: TStore) {
       }
     }
 
+    orderUpdatesForWriter.push({
+      orderId: currentOrder.id,
+      userId: currentOrder.userId,
+      status: currentOrder.status,
+      filledQty: currentOrder.filledQty,
+    });
+
     return {
-      filledQty: filledQtyForCurrentOrder,
-      totalPrice: totalPriceForCurrentOrder,
-      averagePrice: averagePriceForFilledQtyOfCurrentOrder,
-      fills: fillsForCurrentOrder,
-      matchedRestingOrders,
+      backend: {
+        orderId: currentOrder.id,
+        status: currentOrder.status,
+        filledQty: filledQtyForCurrentOrder,
+        totalPrice: totalPriceForCurrentOrder,
+        averagePrice: averagePriceForFilledQtyOfCurrentOrder,
+        fills: fillsForCurrentOrder,
+      },
+      writer: [
+        {
+          table: "fills",
+          data: fillsForCurrentOrder.map((f) => stringifyFill(f)),
+        },
+        {
+          table: "orders",
+          data: orderUpdatesForWriter,
+        },
+      ],
     };
   };
 
@@ -730,7 +806,7 @@ export function createEngine(store: TStore) {
     orderbook: TOrderbook,
     user: TUser,
   ) => {
-    // td:: matchLimitLongOrder && matchMarketLongOrder are identical. similar to matchLimitShortOrder && matchMarketShortOrder
+    // matchLimitLongOrder && matchMarketLongOrder are identical. similar to matchLimitShortOrder && matchMarketShortOrder
     // * the first diff is that the first while loop has an extra condition which validates the order should be matched only till the bestNextPrice is less than or equal to currentOrder.price, 'cause limit order can be matched to better prices but not worse versus there is no such limit on market orders. they keep matching until there is a next price.
     // * secondly, if there is any remainingQty left, for limit orders, an orderbook entry is created for that price vs the order is cancelled for market orders
     // --------- tmerged into one via slippage
@@ -744,13 +820,7 @@ export function createEngine(store: TStore) {
 
     console.dir(store, { depth: 10 });
     if (res !== null) {
-      return {
-        orderId: order.id,
-        status: order.status,
-        filledQty: res.filledQty,
-        averagePrice: res.averagePrice,
-        fills: res.fills,
-      };
+      return res;
     }
 
     return null;
@@ -896,7 +966,19 @@ export function createEngine(store: TStore) {
 
     return matchOrder(normalizedPayload, orderbook, user);
   };
-  const cancelOrder = (order: SelectOrderRecord) => {
+  type TCancelOrderReturnType = {
+    backend: {
+      order: SelectOrderRecord;
+      cancelledQty: number;
+      balances: {
+        releasedMargin: number;
+        available: number;
+        locked: number;
+      };
+    };
+    writer: TWriterSchema;
+  };
+  const cancelOrder = (order: SelectOrderRecord): TCancelOrderReturnType => {
     // if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward.
     // td::cancel only what is sitting on the order book and not the positions PLUS revert the apt balances
 
@@ -949,13 +1031,28 @@ export function createEngine(store: TStore) {
     order.status = "cancelled";
 
     return {
-      order,
-      cancelledQty: openOrder.qty - openOrder.filledQty,
-      balances: {
-        releasedMargin,
-        available: user.collateral.available,
-        locked: user.collateral.locked,
+      backend: {
+        order,
+        cancelledQty: openOrder.qty - openOrder.filledQty,
+        balances: {
+          releasedMargin,
+          available: user.collateral.available,
+          locked: user.collateral.locked,
+        },
       },
+      writer: [
+        {
+          table: "orders",
+          data: [
+            {
+              orderId: order.id,
+              userId: order.userId,
+              filledQty: openOrder.filledQty,
+              status: order.status,
+            },
+          ],
+        },
+      ],
     };
   };
 
@@ -983,16 +1080,6 @@ export function createEngine(store: TStore) {
     );
 
     return { closedPositions: marketPositions };
-  };
-
-  const getOpenOrdersForMarket = (userId: string, marketId: string) => {
-    const orderbook = store.orderbooks[marketId];
-    const user = getUserById(userId);
-    if (!orderbook || !user) {
-      throw new Error("No open orders");
-    }
-
-    orderbook.bids;
   };
 
   //

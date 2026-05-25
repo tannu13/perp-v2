@@ -1,8 +1,11 @@
-import type { InsertFillRecord, SelectOrderRecord } from "@repo/db/schema";
+import type {
+  InsertFillRecord,
+  SelectOrderRecord,
+  TOrderStatusesEnum,
+} from "@repo/db/schema";
 
 export type TPositionType = "LONG" | "SHORT";
 export type TOrderType = "market" | "limit";
-export type TOrderStatus = "open" | "partially_filled" | "filled" | "cancelled";
 
 type StringNumberFields = "qty" | "filledQty" | "price" | "initialMargin";
 
@@ -36,7 +39,7 @@ type TCollateral = {
 //   margin: number;
 //   orderType: TOrderType;
 //   price: number;
-//   status: TOrderStatus;
+//   status: TOrderStatusesEnum;
 // };
 export type TUser = {
   userId: string;
@@ -142,7 +145,7 @@ export type TOpenOrder = {
   qty: number;
   filledQty: number;
   orderId: string;
-  status: TOrderStatus;
+  status: TOrderStatusesEnum;
   margin: number;
   marketId: string;
   positionType: TPositionType;

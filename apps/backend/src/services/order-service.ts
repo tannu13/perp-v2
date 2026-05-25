@@ -1,6 +1,6 @@
 import type { TCreateOrderSchema } from "@repo/shared";
 import type { TComms } from "./backend-comms";
-import db, { eq } from "@repo/db";
+import db from "@repo/db";
 import { orders, orderStatusesEnum } from "@repo/db/schema";
 import { InvalidRequestError, NotFoundError } from "../errors/custom-errors";
 
@@ -23,8 +23,8 @@ export const createOrderService = ({
   };
 
   const createOrder = async (userId: string, payload: TCreateOrderSchema) => {
-    // td:: create order in db, add order details to payload
     const { market, type, qty, equity, price, orderType, slippage } = payload;
+    // td:: maybe cache the market data here
     const marketRow = await db.query.markets.findFirst({
       columns: {
         id: true,

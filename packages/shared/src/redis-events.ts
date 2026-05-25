@@ -1,3 +1,4 @@
+import { InsertFillSchema, SelectOrderSchema } from "@repo/db/schema";
 import z from "zod";
 
 const EngineSupportedTypes = z.enum([
@@ -17,6 +18,7 @@ export const RawEngineRequestSchema = z.object({
   type: EngineSupportedTypes,
   payload: z.string(),
 });
+export type TRawEngineRequestSchema = z.infer<typeof RawEngineRequestSchema>;
 
 export const EngineRequestSchema = z.object({
   correlationId: z.string(),
@@ -41,12 +43,46 @@ export const RawEngineResponseSchema = z.object({
   data: z.string(),
   error: z.string(),
 });
-export const EngineResponseSchema = z.object({
-  correlationId: z.string(),
-  ok: z.boolean(),
-  data: z.union([z.record(z.string(), z.unknown()), z.string()]),
-  error: z.string(),
+export type TRawEngineResponseSchema = z.infer<typeof RawEngineResponseSchema>;
+export const OrderDataForWriterSchema = z.object({
+  orderId: z.string(),
+  userId: z.string(),
+  status: z.string(),
+  filledQty: z.coerce.number(),
 });
+export type TOrderDataForWriterSchema = z.infer<
+  typeof OrderDataForWriterSchema
+>;
+export const WriterSchema = z.array(
+  z.discriminatedUnion("table", [
+    z.object({
+      table: z.literal("fills"),
+      data: z.array(InsertFillSchema),
+    }),
+    z.object({
+      table: z.literal("orders"),
+      data: z.array(OrderDataForWriterSchema),
+    }),
+  ]),
+);
+export type TWriterSchema = z.infer<typeof WriterSchema>;
+export const EngineResponseSchema = z.discriminatedUnion("ok", [
+  z.object({
+    correlationId: z.string(),
+    ok: z.literal(true),
+    data: z.object({
+      backend: z.record(z.string(), z.unknown()),
+      writer: WriterSchema.optional(),
+    }),
+    error: z.literal(""),
+  }),
+  z.object({
+    correlationId: z.string(),
+    ok: z.literal(false),
+    data: z.literal(""),
+    error: z.string(),
+  }),
+]);
 export type TEngineResponseSchema = z.infer<typeof EngineResponseSchema>;
 export type TStreamEngineResponseMessage = {
   id: string;

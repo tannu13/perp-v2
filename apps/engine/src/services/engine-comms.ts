@@ -107,8 +107,6 @@ export const setupComms = async ({
           continue;
         }
 
-        console.log("message:", message.id, result.data);
-
         const { correlationId, payload, type } = result.data;
         // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - td:: think more...
         try {
@@ -194,7 +192,6 @@ export const setupComms = async ({
             );
             continue;
           }
-          console.log("messaged:", message.id, result.data);
 
           // td:: send handler response back to senderClient
           const { correlationId, payload, type } = result.data;

@@ -103,7 +103,7 @@ export const setupComms = async () => {
 
           if (!rawResult.success) {
             console.error(
-              "Unable to parse event - wrong structure:",
+              "Unable to parse event1 - wrong structure:",
               message.id,
               message.message,
               rawResult.error,
@@ -123,13 +123,11 @@ export const setupComms = async () => {
             data: isOk ? JSON.parse(rawResult.data.data) : "",
           };
 
-          console.log("parsedMessage", parsedMessage);
-
           const result = EngineResponseSchema.safeParse(parsedMessage);
 
           if (!result.success) {
             console.error(
-              "Unable to parse event - wrong structure:",
+              "Unable to parse event2 - wrong structure:",
               message.id,
               message.message,
               rawResult.error,
@@ -141,7 +139,6 @@ export const setupComms = async () => {
             );
             continue;
           }
-          console.log("messaged:", message.id, result.data);
           const { correlationId } = result.data;
           // resolve the promise, if available else short circuit
           promiseResolvers.get(correlationId)?.(result.data);
