@@ -8,10 +8,8 @@ import {
   type TStreamEngineRequest,
   RawEngineResponseSchema,
   EngineResponseSchema,
-  type TWriterSchema,
   type TEngineResponseSchema,
 } from "@repo/shared/redis-events";
-import type { TWriterHandle } from "./writer";
 import type { ZodType } from "zod";
 
 // register with the redis stream

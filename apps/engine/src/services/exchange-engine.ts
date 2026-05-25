@@ -1172,6 +1172,16 @@ export function createEngine(store: TStore) {
         marketId: string;
       };
       return getClosedPositionsForMarket(userId, marketId);
+    } else if (type === "spot_price_update") {
+      const { BTC, ETH, SOL } = payload as {
+        SOL: string;
+        ETH: string;
+        BTC: string;
+      };
+
+      console.log("ETH", ETH);
+      console.log("SOL", SOL);
+      console.log("BTC", BTC);
     }
     throw new Error("Unsupported request type");
   };
