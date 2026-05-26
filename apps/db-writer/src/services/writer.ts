@@ -12,6 +12,7 @@ import type {
   TOrderDataForWriterSchema,
 } from "@repo/shared/redis-events";
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const createWriter = () => {
   const handleRequest = async (data: TEngineRequestSchema) => {
     if (data.type === "create_order") {
@@ -26,7 +27,17 @@ export const createWriter = () => {
     }
   };
 
-  const writeOrderData = async (orderData: TOrderDataForWriterSchema[]) => {
+  const insertOrderData = async (tx: Tx, orderData: InsertOrderRecord[]) => {
+    const maxBatchSize = 100;
+    for (let i = 0; i < orderData.length; i += maxBatchSize) {
+      const batch = orderData.slice(i, i + maxBatchSize);
+      await db.insert(orders).values(batch);
+    }
+  };
+  const updateOrderData = async (
+    tx: Tx,
+    orderData: TOrderDataForWriterSchema[],
+  ) => {
     // this'll be update entries.
     for (const orderEntry of orderData) {
       await db
@@ -44,7 +55,7 @@ export const createWriter = () => {
     }
   };
 
-  const writeFillData = async (fillData: InsertFillRecord[]) => {
+  const insertFillData = async (tx: Tx, fillData: InsertFillRecord[]) => {
     const maxBatchSize = 100;
     for (let i = 0; i < fillData.length; i += maxBatchSize) {
       const batch = fillData.slice(i, i + maxBatchSize);
@@ -59,14 +70,23 @@ export const createWriter = () => {
     const { writer } = payload.data;
 
     // write fills & orders
-    for (const entry of writer) {
-      if (entry.table === "fills") {
-        await writeFillData(entry.data);
+    // do them in order - order_inserts, order_updates, fills
+    await db.transaction(async (tx) => {
+      const orderInserts = writer.find((e) => e.table === "order_inserts");
+      if (orderInserts) {
+        await insertOrderData(tx, orderInserts.data);
       }
-      if (entry.table === "orders") {
-        await writeOrderData(entry.data);
+
+      const orderUpdates = writer.find((e) => e.table === "order_updates");
+      if (orderUpdates) {
+        await updateOrderData(tx, orderUpdates.data);
       }
-    }
+
+      const fillInserts = writer.find((e) => e.table === "fills");
+      if (fillInserts) {
+        await insertFillData(tx, fillInserts.data);
+      }
+    });
   };
 
   return { handleRequest, handleResponse };

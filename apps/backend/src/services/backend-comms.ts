@@ -141,7 +141,7 @@ export const setupComms = async () => {
           }
           const { correlationId } = result.data;
           // resolve the promise, if available else short circuit
-          promiseResolvers.get(correlationId)?.(result.data);
+          if (correlationId) promiseResolvers.get(correlationId)?.(result.data);
 
           await listenerClient.xAck(
             INCOMING_STREAM,

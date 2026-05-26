@@ -64,8 +64,9 @@ export const orders = pgTable("orders", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
-export type SelectOrderRecord = typeof orders.$inferSelect;
 export type InsertOrderRecord = typeof orders.$inferInsert;
+export const InsertOrderSchema = createInsertSchema(orders);
+export type SelectOrderRecord = typeof orders.$inferSelect;
 export const SelectOrderSchema = createSelectSchema(orders);
 
 export const fills = pgTable("fills", {

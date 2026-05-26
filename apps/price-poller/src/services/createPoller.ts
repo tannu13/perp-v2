@@ -21,6 +21,7 @@ type BinanceEvent = {
 const BINANCE_WS_URI =
   "wss://stream.binance.com:9443/stream?streams=btcusdt@miniTicker/solusdt@miniTicker/ethusdt@miniTicker";
 const INTERVAL = 1000;
+let socket: WebSocket | null = null;
 export const createPoller = (sendUpdates: TSendToResponseStream) => {
   const binanceMessages: Record<"BTC" | "SOL" | "ETH", string | null> = {
     BTC: null,
@@ -28,57 +29,64 @@ export const createPoller = (sendUpdates: TSendToResponseStream) => {
     SOL: null,
   };
 
-  const socket = new WebSocket(BINANCE_WS_URI);
+  const connect = () => {
+    socket = new WebSocket(BINANCE_WS_URI);
 
-  // 2. Connection opened
-  socket.addEventListener("open", (event) => {
-    console.log("Connected to server!");
-    // socket.send("Hello Server!"); // Send a message
-  });
-
-  // 3. Listen for messages
-  socket.addEventListener("message", (event) => {
-    const parsedData = JSON.parse(event.data);
-    if (parsedData.data.s === "SOLUSDT") {
-      binanceMessages["SOL"] = parsedData.data.c;
-    } else if (parsedData.data.s === "BTCUSDT") {
-      binanceMessages["BTC"] = parsedData.data.c;
-    } else if (parsedData.data.s === "ETHUSDT") {
-      binanceMessages["ETH"] = parsedData.data.c;
-    }
-  });
-
-  // 4. Handle errors
-  socket.addEventListener("error", (error) => {
-    console.error("WebSocket Error:", error);
-  });
-
-  // 5. Handle connection close
-  socket.addEventListener("close", (event) => {
-    console.log("Connection closed:", event.reason);
-  });
-
-  const intervalId = setInterval(() => {
-    console.log("================================================");
-
-    const lastPriceForSOL = binanceMessages.SOL;
-    console.log("lastPriceForSOL", lastPriceForSOL);
-
-    const lastPriceForBTC = binanceMessages.BTC;
-    console.log("lastPriceForBTC", lastPriceForBTC);
-
-    const lastPriceForETH = binanceMessages.ETH;
-    console.log("lastPriceForETH", lastPriceForETH);
-
-    binanceMessages.SOL = null;
-    binanceMessages.BTC = null;
-    binanceMessages.ETH = null;
-
-    sendUpdates("spot_price_update", {
-      SOL: lastPriceForSOL,
-      BTC: lastPriceForBTC,
-      ETH: lastPriceForETH,
+    socket.addEventListener("open", (event) => {
+      console.log("Connected to server!");
+      resetPushingEvents();
     });
-    console.log("================================================");
-  }, INTERVAL);
+
+    socket.addEventListener("message", (event) => {
+      const parsedData = JSON.parse(event.data);
+      if (parsedData.data.s === "SOLUSDT") {
+        binanceMessages["SOL"] = parsedData.data.c;
+      } else if (parsedData.data.s === "BTCUSDT") {
+        binanceMessages["BTC"] = parsedData.data.c;
+      } else if (parsedData.data.s === "ETHUSDT") {
+        binanceMessages["ETH"] = parsedData.data.c;
+      }
+    });
+
+    socket.addEventListener("error", (error) => {
+      console.error("WebSocket Error:", error);
+    });
+
+    socket.addEventListener("close", (event) => {
+      console.log("Connection closed:", event.reason);
+      socket = null;
+      clearInterval(intervalId);
+      binanceMessages["SOL"] = null;
+      binanceMessages["BTC"] = null;
+      binanceMessages["ETH"] = null;
+      setTimeout(() => {
+        resetPushingEvents();
+        connect();
+      }, 5000);
+    });
+  };
+
+  let intervalId: NodeJS.Timeout;
+  const resetPushingEvents = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
+    intervalId = setInterval(() => {
+      const lastPriceForSOL = binanceMessages.SOL;
+      const lastPriceForBTC = binanceMessages.BTC;
+      const lastPriceForETH = binanceMessages.ETH;
+
+      binanceMessages.SOL = null;
+      binanceMessages.BTC = null;
+      binanceMessages.ETH = null;
+
+      sendUpdates("spot_price_update", {
+        SOL: lastPriceForSOL,
+        BTC: lastPriceForBTC,
+        ETH: lastPriceForETH,
+      });
+    }, INTERVAL);
+  };
+
+  return { connect };
 };

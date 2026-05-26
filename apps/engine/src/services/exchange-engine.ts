@@ -1,5 +1,6 @@
 import type {
   InsertFillRecord,
+  InsertOrderRecord,
   SelectOrderRecord,
   TOrderStatusesEnum,
 } from "@repo/db/schema";
@@ -14,6 +15,7 @@ import type {
   TPosition,
   TPositionType,
   TStore,
+  TSupportedAssets,
   TUser,
   TUsers,
 } from "../store";
@@ -215,7 +217,10 @@ export function createEngine(store: TStore) {
           // remove the existingPosition
           // td:: this position needs to be written to a db table as it is being closed. for now just pushing it to user's closed position's array but this can grow rapidly with activity so need to push this data to db table later via redis events and then db writer picks it up
           // td:: closed postion should have extra data, have spread existingPosition so that keys don't get updated from below but still it might need more data points
-          user.closedPositions.push({ ...existingPosition });
+          user.closedPositions.push({
+            ...existingPosition,
+            exitType: "MANUAL",
+          });
           user.positions.splice(positionIndex, 1);
         } else if (updatedQuantity > 0) {
           // existingPosition had greater qty
@@ -305,7 +310,7 @@ export function createEngine(store: TStore) {
       totalPrice: number;
       averagePrice: number;
       fills: FillRecordNumberified[];
-    };
+    } | null;
     writer: TWriterSchema;
   };
 
@@ -549,7 +554,7 @@ export function createEngine(store: TStore) {
           data: fillsForCurrentOrder.map((f) => stringifyFill(f)),
         },
         {
-          table: "orders",
+          table: "order_updates",
           data: orderUpdatesForWriter,
         },
       ],
@@ -794,7 +799,7 @@ export function createEngine(store: TStore) {
           data: fillsForCurrentOrder.map((f) => stringifyFill(f)),
         },
         {
-          table: "orders",
+          table: "order_updates",
           data: orderUpdatesForWriter,
         },
       ],
@@ -1042,7 +1047,7 @@ export function createEngine(store: TStore) {
       },
       writer: [
         {
-          table: "orders",
+          table: "order_updates",
           data: [
             {
               orderId: order.id,
@@ -1080,6 +1085,130 @@ export function createEngine(store: TStore) {
     );
 
     return { closedPositions: marketPositions };
+  };
+
+  const liqudationChecks = (asset: TSupportedAssets, price: number) => {
+    const marketId = store.supportedAssets[asset];
+    const allResponses: TMatchOrderFunctionResponse[] = [];
+
+    for (const user of store.users.values()) {
+      const posIndex = user.positions.findIndex(
+        (pos) => pos.marketId === marketId,
+      );
+      if (posIndex === -1) continue;
+
+      const userPosition = user.positions[posIndex]!;
+      if (userPosition.type === "LONG") {
+        if (userPosition.liquidationPrice >= price) {
+          // liquidate this position
+          const orderId = crypto.randomUUID();
+          const newOrderData: SelectOrderRecord = {
+            id: orderId,
+            userId: user.userId,
+            marketId: marketId,
+            positionType: "SHORT",
+            orderType: "market",
+            status: "pending",
+            qty: userPosition.qty.toString(),
+            filledQty: "0",
+            price: "0",
+            slippage: 100,
+            initialMargin: "0",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          const resp = placeOrder(newOrderData);
+          if (!resp) continue;
+          resp?.writer.unshift({
+            table: "order_inserts",
+            data: [
+              {
+                ...newOrderData,
+                createdAt: undefined,
+                updatedAt: undefined,
+              },
+            ],
+          });
+          allResponses.push(resp);
+        }
+      } else {
+        // SHORT position
+        if (userPosition.liquidationPrice <= price) {
+          // liquidate this position
+          const orderId = crypto.randomUUID();
+          const newOrderData: SelectOrderRecord = {
+            id: orderId,
+            userId: user.userId,
+            marketId: marketId,
+            positionType: "LONG",
+            orderType: "market",
+            status: "pending",
+            qty: userPosition.qty.toString(),
+            filledQty: "0",
+            price: "0",
+            slippage: 100,
+            initialMargin: "0",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          const resp = placeOrder(newOrderData);
+          if (!resp) continue;
+          resp?.writer.unshift({
+            table: "order_inserts",
+            data: [
+              {
+                ...newOrderData,
+                createdAt: undefined,
+                updatedAt: undefined,
+              },
+            ],
+          });
+          allResponses.push(resp);
+        }
+      }
+    }
+
+    return arrayToObjectUtil(allResponses);
+  };
+
+  const arrayToObjectUtil = (allResponses: TMatchOrderFunctionResponse[]) => {
+    let streamableResposne: TMatchOrderFunctionResponse = {
+      backend: null,
+      writer: [],
+    };
+    type TIndividualWriter = TWriterSchema[number];
+    let orderInserts: TIndividualWriter = {
+      table: "order_inserts",
+      data: [],
+    };
+    let orderUpdates: TIndividualWriter = {
+      table: "order_updates",
+      data: [],
+    };
+    let fillInserts: TIndividualWriter = {
+      table: "fills",
+      data: [],
+    };
+    allResponses.forEach((r) => {
+      let orderInsert = r.writer.find((w) => w.table === "order_inserts");
+      if (orderInsert) {
+        orderInserts.data = [...orderInserts.data, ...orderInsert.data];
+      }
+
+      let orderUpdate = r.writer.find((w) => w.table === "order_updates");
+      if (orderUpdate) {
+        orderUpdates.data = [...orderUpdates.data, ...orderUpdate.data];
+      }
+
+      let fillInsert = r.writer.find((w) => w.table === "fills");
+      if (fillInsert) {
+        fillInserts.data = [...fillInserts.data, ...fillInsert.data];
+      }
+    });
+    streamableResposne.writer = [orderInserts, orderUpdates, fillInserts];
+    return streamableResposne;
   };
 
   //
@@ -1178,10 +1307,18 @@ export function createEngine(store: TStore) {
         ETH: string;
         BTC: string;
       };
+      let resp: TMatchOrderFunctionResponse[] = [];
+      if (BTC !== null) {
+        resp.push(liqudationChecks("BTC", Number(BTC)));
+      }
+      if (ETH !== null) {
+        resp.push(liqudationChecks("ETH", Number(ETH)));
+      }
+      if (SOL !== null) {
+        resp.push(liqudationChecks("SOL", Number(SOL)));
+      }
 
-      console.log("ETH", ETH);
-      console.log("SOL", SOL);
-      console.log("BTC", BTC);
+      return arrayToObjectUtil(resp);
     }
     throw new Error("Unsupported request type");
   };

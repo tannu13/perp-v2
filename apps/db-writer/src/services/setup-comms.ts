@@ -244,6 +244,7 @@ export const setupComms = async ({
               message.id,
               message.message,
               result.error,
+              parsedMessage,
             );
             await client.xAck(streamName, groupName, message.id);
             continue;

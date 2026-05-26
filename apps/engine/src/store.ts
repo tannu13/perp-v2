@@ -15,9 +15,12 @@ type Numberified<T> = {
 
 export type OrderRecordNumberified = Numberified<SelectOrderRecord>;
 export type FillRecordNumberified = Numberified<InsertFillRecord>;
+type UserId = string;
+type OrderId = string;
+type MarketId = string;
 
 export type TPosition = {
-  marketId: string;
+  marketId: MarketId;
   type: TPositionType;
   qty: number;
   margin: number;
@@ -25,29 +28,22 @@ export type TPosition = {
   pnL?: number;
   averagePrice: number;
 };
+export type TClosedPosition = {
+  exitType: "MANUAL" | "LIQUIDATED";
+} & TPosition;
 
 type TCollateral = {
   available: number;
   locked: number;
 };
 
-// export type TOrder = {
-//   orderId: number;
-//   market: string;
-//   type: TPositionType;
-//   qty: number;
-//   margin: number;
-//   orderType: TOrderType;
-//   price: number;
-//   status: TOrderStatusesEnum;
-// };
 export type TUser = {
-  userId: string;
+  userId: UserId;
   collateral: TCollateral;
   positions: TPosition[];
-  closedPositions: TPosition[];
+  closedPositions: TClosedPosition[];
 };
-export type TUsers = Map<string, TUser>;
+export type TUsers = Map<UserId, TUser>;
 const users: TUsers = new Map([
   [
     "be064682-faac-490c-9c35-a71c9ad180be",
@@ -141,13 +137,13 @@ const users: TUsers = new Map([
 
 // in-memory store but needs more data in them so that user orders aren't needed
 export type TOpenOrder = {
-  userId: string;
+  userId: UserId;
   qty: number;
   filledQty: number;
-  orderId: string;
+  orderId: OrderId;
   status: TOrderStatusesEnum;
   margin: number;
-  marketId: string;
+  marketId: MarketId;
   positionType: TPositionType;
   createdAt: Date;
 };
@@ -164,7 +160,7 @@ export type TOrderbook = {
   indexPrice: number;
   allowedLeverage: number;
 };
-type TOrderbooks = Record<string, TOrderbook>;
+type TOrderbooks = Record<MarketId, TOrderbook>;
 
 // td:: can be moved to db
 export type TFill = {
@@ -202,8 +198,7 @@ export type TStore = {
   users: TUsers;
   fills: TFill[];
   totalSystemDeposits: number;
-  lastUserId: number;
-  lastOrderId: number;
+  supportedAssets: Record<TSupportedAssets, string>;
 };
 
 const SUPPORTED_ASSETS = {
@@ -225,7 +220,8 @@ const SUPPORTED_ASSETS = {
     indexPrice: 4930,
     allowedLeverage: 8,
   },
-};
+} as const;
+export type TSupportedAssets = keyof typeof SUPPORTED_ASSETS;
 
 export function createExchangeStore(): TStore {
   const orderbooks: TOrderbooks = {};
@@ -238,12 +234,16 @@ export function createExchangeStore(): TStore {
       allowedLeverage: obj.allowedLeverage,
     };
   });
+  const supportedAssets: Record<keyof typeof SUPPORTED_ASSETS, string> = {
+    SOL: SUPPORTED_ASSETS["SOL"].asset,
+    ETH: SUPPORTED_ASSETS["ETH"].asset,
+    BTC: SUPPORTED_ASSETS["BTC"].asset,
+  };
   return {
     users,
     orderbooks,
     fills: [],
     totalSystemDeposits: 0,
-    lastUserId: 4,
-    lastOrderId: 0,
+    supportedAssets,
   };
 }

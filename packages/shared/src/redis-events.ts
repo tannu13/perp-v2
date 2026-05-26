@@ -1,4 +1,4 @@
-import { InsertFillSchema, SelectOrderSchema } from "@repo/db/schema";
+import { InsertFillSchema, InsertOrderSchema } from "@repo/db/schema";
 import z from "zod";
 
 const EngineSupportedTypes = z.enum([
@@ -61,24 +61,28 @@ export const WriterSchema = z.array(
       data: z.array(InsertFillSchema),
     }),
     z.object({
-      table: z.literal("orders"),
+      table: z.literal("order_updates"),
       data: z.array(OrderDataForWriterSchema),
+    }),
+    z.object({
+      table: z.literal("order_inserts"),
+      data: z.array(InsertOrderSchema),
     }),
   ]),
 );
 export type TWriterSchema = z.infer<typeof WriterSchema>;
 export const EngineResponseSchema = z.discriminatedUnion("ok", [
   z.object({
-    correlationId: z.string(),
+    correlationId: z.string().optional(),
     ok: z.literal(true),
     data: z.object({
-      backend: z.record(z.string(), z.unknown()),
+      backend: z.record(z.string(), z.unknown()).nullable(),
       writer: WriterSchema.optional(),
     }),
     error: z.literal(""),
   }),
   z.object({
-    correlationId: z.string(),
+    correlationId: z.string().optional(),
     ok: z.literal(false),
     data: z.literal(""),
     error: z.string(),
