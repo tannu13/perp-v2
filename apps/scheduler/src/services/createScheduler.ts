@@ -11,12 +11,12 @@ export const createScheduler = async (
 
   await queue.upsertJobScheduler(
     "backup-scheduler",
-    { pattern: "*/15 * * * *" },
+    { pattern: "*/5 * * * * *" },
     { name: "backup-event" },
   );
   await queue.upsertJobScheduler(
     "funding-rate-dispersal",
-    { pattern: "0 * * * *" },
+    { pattern: "*/15 * * * * *" },
     { name: "funding-rate-dispersal" },
   );
 

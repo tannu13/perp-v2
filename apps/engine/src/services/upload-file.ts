@@ -1,7 +1,12 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  CopyObjectCommand,
+} from "@aws-sdk/client-s3";
 import env from "../env";
 
 const isDev = env.NODE_ENV === "development";
+const BACKUP_FILE_NAME = "store-backup-latest.json";
 export const createUploader = () => {
   const s3Client = new S3Client({
     region: env.AWS_REGION,
@@ -37,6 +42,14 @@ export const createUploader = () => {
 
       const command = new PutObjectCommand(uploadParams);
       const response = await s3Client.send(command);
+
+      // this way reading wud be always abt the latest file
+      const copyCommand = new CopyObjectCommand({
+        Bucket: env.AWS_BUCKET_NAME,
+        CopySource: `${env.AWS_BUCKET_NAME}/${destinationFileName}`,
+        Key: BACKUP_FILE_NAME,
+      });
+      await s3Client.send(copyCommand);
 
       console.log("uploaded", response);
       return response;
