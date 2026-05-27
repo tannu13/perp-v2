@@ -1,16 +1,8 @@
 import z from "zod";
 
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "production"]).default("development"),
   REDIS_URL: z.string().min(1).startsWith("redis://"),
-  INCOMING_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
-  OUTGOING_STREAM: z.string().min(1).default("engine-to-backend-trade-comms"),
-  LISTENER_GROUP: z.string().min(1).default("engine-group"),
-  LISTENER_GROUP_CONSUMER: z.string().min(1).default("engine"),
-  AWS_REGION: z.string().min(1),
-  AWS_ACCESS_KEY_ID: z.string().min(1),
-  AWS_SECRET_ACCESS_KEY: z.string().min(1),
-  AWS_BUCKET_NAME: z.string().min(1),
+  ENGINE_ON_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
 });
 
 type Env = z.infer<typeof EnvSchema>;

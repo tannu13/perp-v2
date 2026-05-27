@@ -1,4 +1,3 @@
-import env from "./env";
 import { setupComms } from "./services/setup-comms";
 import { createWriter } from "./services/writer";
 

@@ -20,6 +20,21 @@ services:
     volumes:
       - redisdata:/data
 
+  minio:
+    image: minio/minio:latest
+    container_name: perps_minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=fake-local-key
+      - MINIO_ROOT_PASSWORD=fake-local-secret
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+
 volumes:
   db_data:
   redisdata:
+  miniodata:

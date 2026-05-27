@@ -24,8 +24,15 @@ import {
   type TOrderDataForWriterSchema,
   type TWriterSchema,
 } from "@repo/shared/redis-events";
+import type { TUploadToS3 } from "./upload-file";
 
-export function createEngine(store: TStore) {
+export function createEngine({
+  store,
+  uploadToS3,
+}: {
+  store: TStore;
+  uploadToS3: TUploadToS3;
+}) {
   // for price priority
   const getNextBestAskPrice = (asks: TOrderbook["asks"], startFrom = -1) => {
     let minPrice = Infinity;
@@ -1211,14 +1218,34 @@ export function createEngine(store: TStore) {
     return streamableResposne;
   };
 
+  const getCurrentFormattedDate = () => {
+    const now = new Date();
+
+    const year = now.getFullYear();
+    const day = String(now.getDate()).padStart(2, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+
+    return `${year}-${day}-${month}-${hours}-${minutes}`;
+  };
+  const backupStore = async (messageId: string) => {
+    // console.log(store);
+
+    await uploadToS3(
+      { messageId, store },
+      `${getCurrentFormattedDate()}-store-backup`,
+    );
+  };
+
   //
   const handle = ({
     payload,
     type,
-  }: Pick<TEngineRequestSchema, "payload" | "type">): Record<
-    string,
-    unknown
-  > => {
+    messageId,
+  }: Pick<TEngineRequestSchema, "payload" | "type"> & { messageId: string }):
+    | Record<string, unknown>
+    | undefined => {
     if (type === "init_balance") {
       const { userId } = payload as { userId: string };
       let user = getUserById(userId);
@@ -1319,6 +1346,20 @@ export function createEngine(store: TStore) {
       }
 
       return arrayToObjectUtil(resp);
+    } else if (type === "backup_store") {
+      const { now } = payload as { now: string };
+      const payloadNowDate = new Date(now);
+      const safeOffsetMin = 10;
+      const safeOffsetMills = safeOffsetMin * 60 * 1000;
+      if (payloadNowDate > new Date(Date.now() - safeOffsetMills)) {
+        backupStore(messageId);
+      } else {
+        // can be ignored as it is a past event that somehow engine didn't pickup up on time
+      }
+      return;
+    } else if (type === "funding_rate_dispersal") {
+      console.log("funding_rate_dispersal");
+      return;
     }
     throw new Error("Unsupported request type");
   };
@@ -1326,3 +1367,4 @@ export function createEngine(store: TStore) {
 }
 
 export type TEngine = ReturnType<typeof createEngine>;
+export type TEngineHandler = Parameters<TEngine["handle"]>[0];

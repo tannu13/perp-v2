@@ -7,7 +7,7 @@ import {
   type TStreamEngineRequestMessage,
   type TStreamEngineRequest,
 } from "@repo/shared/redis-events";
-import type { TEngine } from "./exchange-engine";
+import type { TEngine, TEngineHandler } from "./exchange-engine";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;
@@ -18,9 +18,7 @@ const LISTENER_GROUP_CONSUMER = env.LISTENER_GROUP_CONSUMER;
 export const setupComms = async ({
   engineHandler,
 }: {
-  engineHandler: (
-    message: Pick<TEngineRequestSchema, "payload" | "type">,
-  ) => ReturnType<TEngine["handle"]>;
+  engineHandler: (message: TEngineHandler) => ReturnType<TEngine["handle"]>;
 }) => {
   const listenerClient = await createClient({ url: env.REDIS_URL }).on(
     "error",
@@ -110,12 +108,14 @@ export const setupComms = async ({
         const { correlationId, payload, type } = result.data;
         // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - td:: think more...
         try {
-          const data = engineHandler({ payload, type });
-          await sendToResponseStream({
-            correlationId,
-            ok: true,
-            data,
-          });
+          const data = engineHandler({ payload, type, messageId: message.id });
+          if (data) {
+            await sendToResponseStream({
+              correlationId,
+              ok: true,
+              data,
+            });
+          }
         } catch (err) {
           if (err instanceof Error) {
             await sendToResponseStream({
@@ -196,12 +196,18 @@ export const setupComms = async ({
           // td:: send handler response back to senderClient
           const { correlationId, payload, type } = result.data;
           try {
-            const data = engineHandler({ payload, type });
-            await sendToResponseStream({
-              correlationId,
-              ok: true,
-              data,
+            const data = engineHandler({
+              payload,
+              type,
+              messageId: message.id,
             });
+            if (data) {
+              await sendToResponseStream({
+                correlationId,
+                ok: true,
+                data,
+              });
+            }
           } catch (err) {
             if (err instanceof Error) {
               await sendToResponseStream({

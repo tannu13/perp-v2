@@ -1,7 +1,4 @@
-import type {
-  SendToResponseStreamArgs,
-  TSendToResponseStream,
-} from "./setupComms";
+import type { TSendToResponseStream } from "./setupComms";
 
 type BinanceEvent = {
   stream: string; // stream name
