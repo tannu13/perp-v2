@@ -44,7 +44,9 @@ export type TUser = {
   closedPositions: TClosedPosition[];
 };
 export type TUsers = Map<UserId, TUser>;
-const users: TUsers = new Map([
+const users: TUsers = new Map();
+/*
+new Map([
   [
     "be064682-faac-490c-9c35-a71c9ad180be",
     {
@@ -134,7 +136,7 @@ const users: TUsers = new Map([
     },
   ],
 ]);
-
+*/
 // in-memory store but needs more data in them so that user orders aren't needed
 export type TOpenOrder = {
   userId: UserId;
@@ -223,7 +225,10 @@ const SUPPORTED_ASSETS = {
 } as const;
 export type TSupportedAssets = keyof typeof SUPPORTED_ASSETS;
 
-export function createExchangeStore(): TStore {
+export function createExchangeStore(backupStore: TStore): TStore {
+  if (backupStore) {
+    return backupStore;
+  }
   const orderbooks: TOrderbooks = {};
   Object.entries(SUPPORTED_ASSETS).forEach(([asset, obj]) => {
     orderbooks[obj.asset] = {

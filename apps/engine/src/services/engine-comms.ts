@@ -20,6 +20,7 @@ export const setupComms = async ({
 }: {
   engineHandler: (message: TEngineHandler) => ReturnType<TEngine["handle"]>;
 }) => {
+  const recoveredMessageIds = new Map<string, boolean>();
   const listenerClient = await createClient({ url: env.REDIS_URL }).on(
     "error",
     (err) => console.log("Redis Client Error", err),
@@ -41,6 +42,52 @@ export const setupComms = async ({
       throw err;
     }
   }
+
+  const runRecovery = async (startingMessageId: string) => {
+    let startId = `(${startingMessageId}`;
+    const endId = "+";
+
+    while (true) {
+      // XRANGE gives you raw historical stream data without affecting consumer groups
+      const entries = await listenerClient.xRange(
+        INCOMING_STREAM,
+        startId,
+        endId,
+        { COUNT: 10 },
+      );
+
+      if (entries.length === 0) break;
+
+      for (const entry of entries) {
+        const { id: messageId, message: messageObj } = entry;
+        recoveredMessageIds.set(messageId, true);
+
+        const rawResult = RawEngineRequestSchema.safeParse(messageObj);
+        if (!rawResult.success) {
+          continue;
+        }
+
+        const parsedMessage = {
+          ...rawResult.data,
+          payload: JSON.parse(rawResult.data.payload),
+        };
+
+        const result = EngineRequestSchema.safeParse(parsedMessage);
+        if (!result.success) continue;
+
+        const { type, payload } = result.data;
+
+        try {
+          engineHandler({ payload, type, messageId });
+        } catch (err) {
+          console.error(`Failed to replay historical event ${messageId}:`, err);
+        }
+      }
+
+      const lastMessageInBatch = entries[entries.length - 1]!;
+      startId = `(${lastMessageInBatch.id}`;
+    }
+  };
 
   const handlePendingEntries = async () => {
     // handle PEL items - events that were picked up but not ACKed
@@ -65,6 +112,15 @@ export const setupComms = async ({
 
       for (const message of messages) {
         if (!message) continue;
+        if (recoveredMessageIds.has(message.id)) {
+          recoveredMessageIds.delete(message.id);
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
+          continue;
+        }
 
         const rawResult = RawEngineRequestSchema.safeParse(message.message);
 
@@ -247,5 +303,5 @@ export const setupComms = async ({
     });
   };
 
-  return { handlePendingEntries, listenToIncomingEvents };
+  return { handlePendingEntries, listenToIncomingEvents, runRecovery };
 };
