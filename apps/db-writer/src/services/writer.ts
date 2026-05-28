@@ -2,6 +2,7 @@ import db, { and, eq } from "@repo/db";
 import {
   fills,
   orders,
+  processedEvents,
   type InsertFillRecord,
   type InsertOrderRecord,
   type TOrderStatusesEnum,
@@ -31,7 +32,7 @@ export const createWriter = () => {
     const maxBatchSize = 100;
     for (let i = 0; i < orderData.length; i += maxBatchSize) {
       const batch = orderData.slice(i, i + maxBatchSize);
-      await db.insert(orders).values(batch);
+      await tx.insert(orders).values(batch);
     }
   };
   const updateOrderData = async (
@@ -40,7 +41,7 @@ export const createWriter = () => {
   ) => {
     // this'll be update entries.
     for (const orderEntry of orderData) {
-      await db
+      await tx
         .update(orders)
         .set({
           status: orderEntry.status as TOrderStatusesEnum,
@@ -59,19 +60,31 @@ export const createWriter = () => {
     const maxBatchSize = 100;
     for (let i = 0; i < fillData.length; i += maxBatchSize) {
       const batch = fillData.slice(i, i + maxBatchSize);
-      await db.insert(fills).values(batch);
+      await tx.insert(fills).values(batch);
     }
   };
+
+  const checkProcessedEvents = async (tx: Tx, correlationId: string) => {
+    await tx.insert(processedEvents).values([
+      {
+        idempotencyKey: correlationId,
+      },
+    ]);
+  };
+
   const handleResponse = async (payload: TEngineResponseSchema) => {
     if (!payload.data || !payload.data.writer) {
       return;
     }
 
     const { writer } = payload.data;
+    const { correlationId } = payload;
 
     // write fills & orders
     // do them in order - order_inserts, order_updates, fills
     await db.transaction(async (tx) => {
+      await checkProcessedEvents(tx, correlationId);
+
       const orderInserts = writer.find((e) => e.table === "order_inserts");
       if (orderInserts) {
         await insertOrderData(tx, orderInserts.data);

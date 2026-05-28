@@ -144,8 +144,19 @@ export const setupComms = async ({
           continue;
         }
 
-        // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - td:: think more...
-        const data = await handler(result.data);
+        // resolving pending entries - there cud be a case where this entry might've been already processed by the engine and just before it cud ack it, the process crashed, as redis streams give capability of at-least once execution, not only once execution. maybe do idempotency by correlationId or message.id - implemented idempotency by correlationId
+        try {
+          await handler(result.data);
+        } catch (error: any) {
+          // td:: handle db write error here
+          const code = error?.code ?? error?.cause?.code;
+          if (code === "23505") {
+            console.log("Duplicate event skipped");
+            await client.xAck(streamName, groupName, message.id);
+            continue;
+          }
+          throw error;
+        }
 
         await client.xAck(streamName, groupName, message.id);
       }
@@ -250,7 +261,17 @@ export const setupComms = async ({
             continue;
           }
 
-          await handler(result.data);
+          try {
+            await handler(result.data);
+          } catch (error: any) {
+            // td:: handle db write error here
+            const code = error?.code ?? error?.cause?.code;
+            if (code === "23505") {
+              console.log("Duplicate event skipped");
+              return; // Safe early return, data was already rolled back!
+            }
+            throw error;
+          }
 
           await client.xAck(streamName, groupName, message.id);
         }

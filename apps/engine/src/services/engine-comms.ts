@@ -48,12 +48,11 @@ export const setupComms = async ({
     const endId = "+";
 
     while (true) {
-      // XRANGE gives you raw historical stream data without affecting consumer groups
       const entries = await listenerClient.xRange(
         INCOMING_STREAM,
         startId,
         endId,
-        { COUNT: 10 },
+        { COUNT: 100 },
       );
 
       if (entries.length === 0) break;
@@ -249,7 +248,6 @@ export const setupComms = async ({
             continue;
           }
 
-          // td:: send handler response back to senderClient
           const { correlationId, payload, type } = result.data;
           try {
             const data = engineHandler({

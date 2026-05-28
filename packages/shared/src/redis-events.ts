@@ -75,7 +75,7 @@ export const WriterSchema = z.array(
 export type TWriterSchema = z.infer<typeof WriterSchema>;
 export const EngineResponseSchema = z.discriminatedUnion("ok", [
   z.object({
-    correlationId: z.string().optional(),
+    correlationId: z.string(),
     ok: z.literal(true),
     data: z.object({
       backend: z.record(z.string(), z.unknown()).nullable(),
@@ -84,7 +84,7 @@ export const EngineResponseSchema = z.discriminatedUnion("ok", [
     error: z.literal(""),
   }),
   z.object({
-    correlationId: z.string().optional(),
+    correlationId: z.string(),
     ok: z.literal(false),
     data: z.literal(""),
     error: z.string(),

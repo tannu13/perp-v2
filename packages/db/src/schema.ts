@@ -64,6 +64,11 @@ export const orders = pgTable("orders", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+export const processedEvents = pgTable("processed_events", {
+  idempotencyKey: uuid("idempotency_key").primaryKey().notNull(),
+});
+
 export type InsertOrderRecord = typeof orders.$inferInsert;
 export const InsertOrderSchema = createInsertSchema(orders);
 export type SelectOrderRecord = typeof orders.$inferSelect;
