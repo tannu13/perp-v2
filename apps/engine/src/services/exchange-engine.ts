@@ -1238,6 +1238,38 @@ export function createEngine({
     );
   };
 
+  const disperseFundingRate = () => {
+    for (const user of store.users.values()) {
+      for (const position of user.positions) {
+        const marketId = position.marketId;
+        const orderbook = store.orderbooks[marketId];
+        if (!orderbook) {
+          continue;
+        }
+
+        // if inflation rate is +, longs pay shorts, else shorts pay long
+        const inflationRate =
+          (orderbook.lastTradedPrice - orderbook.indexPrice) /
+          orderbook.indexPrice;
+
+        const notionalValue = position.qty * orderbook.lastTradedPrice;
+        if (position.type === "LONG") {
+          position.margin = position.margin - notionalValue * inflationRate;
+        } else {
+          position.margin = position.margin + notionalValue * inflationRate;
+        }
+
+        // update liquidation price
+        position.liquidationPrice = calculateLiquidationPrice({
+          margin: position.margin,
+          averagePrice: position.averagePrice,
+          qty: position.qty,
+          type: position.type,
+        });
+      }
+    }
+  };
+
   //
   const handle = ({
     payload,
@@ -1358,7 +1390,7 @@ export function createEngine({
       }
       return;
     } else if (type === "funding_rate_dispersal") {
-      console.log("funding_rate_dispersal");
+      disperseFundingRate();
       return;
     }
     throw new Error("Unsupported request type");
