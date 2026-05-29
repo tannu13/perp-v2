@@ -6,7 +6,8 @@ A high-performance, fault-tolerant, and event-driven perpetual futures trading p
 
 ## System Architecture
 
-The ecosystem consists of several specialized microservices interacting seamlessly via an event-driven loop.
+The ecosystem consists of several specialized microservices interacting seamlessly via an event-driven loop:
+![alt text](perps-v2-system-design.png)
 
 - **API Backend:** Handles user authenticated requests (orders, margin allocations, account retrievals) and pushes incoming transaction payloads directly into an upstream Redis stream pipeline.
 - **In-Memory Matching Engine:** The low-latency core of the exchange. It operates entirely in memory to achieve sub-millisecond transaction execution, handling limit/market order matching, dynamic margin verification, position tracking, and real-time PnL metrics.
