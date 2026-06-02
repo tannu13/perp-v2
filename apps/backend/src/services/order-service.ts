@@ -148,6 +148,17 @@ export const createOrderService = ({
     return { fills: fillsData };
   };
 
+  const getDepth = async (marketId: string) => {
+    const response = await sendToEngine("get_depth", {
+      marketId,
+    });
+    if (!response.ok) {
+      throw new InvalidRequestError(response.error);
+    }
+
+    return response.data;
+  };
+
   return {
     onramp,
     createOrder,
@@ -158,5 +169,6 @@ export const createOrderService = ({
     getOpenOrdersForMarket,
     getOrdersForMarket,
     getFills,
+    getDepth,
   };
 };

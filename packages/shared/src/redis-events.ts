@@ -12,6 +12,7 @@ const EngineSupportedTypes = z.enum([
   "spot_price_update",
   "backup_store",
   "funding_rate_dispersal",
+  "get_depth",
 ]);
 export type TEngineSupportedTypes = z.infer<typeof EngineSupportedTypes>;
 
@@ -77,10 +78,14 @@ export const EngineResponseSchema = z.discriminatedUnion("ok", [
   z.object({
     correlationId: z.string(),
     ok: z.literal(true),
-    data: z.object({
-      backend: z.record(z.string(), z.unknown()).nullable(),
-      writer: WriterSchema.optional(),
-    }),
+    data: z.union([
+      z.object({
+        backend: z.record(z.string(), z.unknown()).nullable(),
+        writer: WriterSchema.optional(),
+        wsServer: z.object({}).optional(),
+      }),
+      z.any(),
+    ]),
     error: z.literal(""),
   }),
   z.object({

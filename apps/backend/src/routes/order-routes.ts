@@ -63,5 +63,12 @@ export const createOrderRouter = (controller: TController) => {
 
   orderRouter.get("/fills", authenticate, controller.getFills);
 
+  orderRouter.get(
+    "/depth",
+    authenticate,
+    validate("query", z.object({ marketId: z.string().trim().min(1) })),
+    controller.getDepth,
+  );
+
   return orderRouter;
 };

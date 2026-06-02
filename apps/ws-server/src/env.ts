@@ -1,12 +1,13 @@
 import z from "zod";
 
 const EnvSchema = z.object({
-  DATABASE_URL: z.string().startsWith("postgresql://"),
   REDIS_URL: z.string().min(1).startsWith("redis://"),
-  REQUEST_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
-  RESPONSE_STREAM: z.string().min(1).default("engine-to-backend-trade-comms"),
-  LISTENER_GROUP: z.string().min(1).default("db-writer-group"),
-  LISTENER_GROUP_CONSUMER: z.string().min(1).default("db-writer"),
+  ENGINE_RESPONSE_STREAM: z
+    .string()
+    .min(1)
+    .default("engine-to-backend-trade-comms"),
+  LISTENER_GROUP: z.string().min(1).default("ws-server-group"),
+  LISTENER_GROUP_CONSUMER: z.string().min(1).default("ws-server"),
 });
 
 type Env = z.infer<typeof EnvSchema>;

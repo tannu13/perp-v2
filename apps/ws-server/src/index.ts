@@ -1,47 +1,13 @@
-interface WebSocketData {
-  id: string;
-  subscribedFeeds: Set<string>;
-}
+import type { TEngineResponseSchema } from "@repo/shared/redis-events";
+import { createWSServer } from "./services/createWSServer";
 
-const server = Bun.serve<WebSocketData>({
-  port: 3010,
-  fetch(req, server) {
-    const url = new URL(req.url);
-    // Get the 'feeds' param (e.g., "stocks,news") and split into an array
-    const feedsParam = url.searchParams.get("feeds");
-    const initialFeeds = feedsParam ? feedsParam.split(",") : [];
+const server = createWSServer();
 
-    const success = server.upgrade(req, {
-      data: {
-        id: crypto.randomUUID(),
-        // Pass the extracted feeds into the socket's data object
-        subscribedFeeds: new Set(initialFeeds),
-      },
-    });
+const handler = (response: TEngineResponseSchema) => {
+  if (typeof response.data === "string" && response.data === "") return;
 
-    if (success) return undefined;
-    return new Response("Upgrade failed", { status: 400 });
-  },
-  websocket: {
-    open(ws) {
-      console.log("Connected to websocket server");
-
-      const validFeeds = ["last-traded-price", "mark-price", "depth", "trades"];
-      for (const feed of ws.data.subscribedFeeds) {
-        if (validFeeds.includes(feed)) {
-          ws.subscribe(`feed:${feed}`);
-          ws.send(
-            JSON.stringify({
-              type: "system",
-              message: `Auto-subscribed to ${feed}`,
-            }),
-          );
-        }
-      }
-    },
-    message(ws) {},
-  },
-});
+  // response.data.
+};
 
 setInterval(() => {
   const update = {
@@ -51,5 +17,8 @@ setInterval(() => {
   };
   console.log("Running update interval");
 
-  server.publish("feed:last-traded-price", JSON.stringify(update));
+  server.publish(
+    "feed:e3289213-372c-44d2-8cc8-2a6eb55b11b1:last-traded-price",
+    JSON.stringify(update),
+  );
 }, 5000);

@@ -7,7 +7,15 @@ export const validate = (
 ) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      req[target] = schema.parse(req[target]);
+      if (target === "query") {
+        req.validated = {
+          query: schema.parse(req[target]) as Record<string, unknown>,
+        };
+      } else {
+        // for params & body
+        req[target] = schema.parse(req[target]);
+      }
+
       next();
     } catch (error) {
       if (error instanceof ZodError) {

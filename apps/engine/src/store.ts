@@ -201,6 +201,7 @@ export type TStore = {
   fills: TFill[];
   totalSystemDeposits: number;
   supportedAssets: Record<TSupportedAssets, string>;
+  lastUpdateId: number;
 };
 
 const SUPPORTED_ASSETS = {
@@ -250,5 +251,6 @@ export function createExchangeStore(backupStore: TStore): TStore {
     fills: [],
     totalSystemDeposits: 0,
     supportedAssets,
+    lastUpdateId: 0,
   };
 }

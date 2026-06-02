@@ -839,18 +839,8 @@ export function createEngine({
   };
 
   const placeOrder = (payload: SelectOrderRecord) => {
-    let {
-      userId,
-      marketId,
-      positionType,
-      orderType,
-      status,
-      qty,
-      filledQty,
-      price,
-      slippage,
-      initialMargin,
-    } = payload;
+    let { userId, marketId, positionType, orderType, price, initialMargin } =
+      payload;
 
     const normalizedPayload: OrderRecordNumberified = {
       ...payload,
@@ -1270,6 +1260,26 @@ export function createEngine({
     }
   };
 
+  const getMarketDepth = (marketId: string) => {
+    return {
+      market: marketId,
+      lastUpdateId: store.lastUpdateId, // The absolute sequence/offset checkpoint of this snapshot
+      timestamp: +new Date(), // Unix timestamp in milliseconds
+      bids: [
+        // [ Price, Quantity ] -> Sorted descending (highest to lowest)
+        ["95100.50", "1.4200"],
+        ["95100.00", "0.8500"],
+        ["95098.25", "12.0050"],
+      ],
+      asks: [
+        // [ Price, Quantity ] -> Sorted ascending (lowest to highest)
+        ["95102.00", "0.5000"],
+        ["95102.50", "3.1120"],
+        ["95104.00", "0.9840"],
+      ],
+    };
+  };
+
   //
   const handle = ({
     payload,
@@ -1392,6 +1402,9 @@ export function createEngine({
     } else if (type === "funding_rate_dispersal") {
       disperseFundingRate();
       return;
+    } else if (type === "get_depth") {
+      const { marketId } = payload as { marketId: string };
+      return getMarketDepth(marketId);
     }
     throw new Error("Unsupported request type");
   };

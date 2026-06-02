@@ -68,6 +68,12 @@ export const createOrderController = (services: TService) => {
     return res.status(200).json(response);
   };
 
+  const getDepth = async (req: Request, res: Response) => {
+    const marketId = req.validated?.query?.marketId as string;
+    const response = await services.getDepth(marketId);
+    return res.status(200).json(response);
+  };
+
   return {
     onramp,
     createOrder,
@@ -78,5 +84,6 @@ export const createOrderController = (services: TService) => {
     getOpenOrdersForMarket,
     getOrdersForMarket,
     getFills,
+    getDepth,
   };
 };
