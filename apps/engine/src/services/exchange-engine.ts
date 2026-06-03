@@ -41,7 +41,7 @@ export function createEngine({
       const currentPrice = Number(price);
       if (
         minPrice > currentPrice &&
-        currentPrice > startFrom &&
+        currentPrice > Number(startFrom) &&
         ask.availableQty > 0
       ) {
         minPrice = currentPrice;
@@ -62,7 +62,7 @@ export function createEngine({
       const currentPrice = Number(price);
       if (
         currentPrice > maxPrice &&
-        startFrom > currentPrice &&
+        Number(startFrom) > currentPrice &&
         bid.availableQty > 0
       ) {
         maxPrice = currentPrice;
@@ -830,7 +830,7 @@ export function createEngine({
       res = matchShortOrder(order, orderbook, user);
     }
 
-    console.dir(store, { depth: 10 });
+    // console.dir(store, { depth: 10 });
     if (res !== null) {
       return res;
     }
@@ -1220,7 +1220,7 @@ export function createEngine({
     return `${year}-${day}-${month}-${hours}-${minutes}`;
   };
   const backupStore = async (messageId: string) => {
-    // console.log(store);
+    console.log("store", messageId);
 
     await uploadToS3(
       { messageId, store },
@@ -1261,22 +1261,38 @@ export function createEngine({
   };
 
   const getMarketDepth = (marketId: string) => {
+    const orderbook = store.orderbooks[marketId];
+    if (!orderbook) {
+      throw new Error(`Unsupported market symbol`);
+    }
+
+    const bids: [string, string][] = [];
+    let bestNextPrice = getNextBestBidPrice(orderbook.bids);
+    const maxDepth = 20;
+    let iteration = 0;
+    while (bestNextPrice && iteration < maxDepth) {
+      iteration++;
+      const { availableQty } = orderbook.bids[`${bestNextPrice}`]!;
+      bids.push([`${bestNextPrice}`, `${availableQty}`]);
+      bestNextPrice = getNextBestBidPrice(orderbook.bids, bestNextPrice);
+    }
+
+    const asks: [string, string][] = [];
+    bestNextPrice = getNextBestAskPrice(orderbook.asks);
+    iteration = 0;
+    while (bestNextPrice && iteration < maxDepth) {
+      iteration++;
+      const { availableQty } = orderbook.asks[`${bestNextPrice}`]!;
+      asks.push([`${bestNextPrice}`, `${availableQty}`]);
+      bestNextPrice = getNextBestAskPrice(orderbook.asks, bestNextPrice);
+    }
+
     return {
       market: marketId,
-      lastUpdateId: store.lastUpdateId, // The absolute sequence/offset checkpoint of this snapshot
-      timestamp: +new Date(), // Unix timestamp in milliseconds
-      bids: [
-        // [ Price, Quantity ] -> Sorted descending (highest to lowest)
-        ["95100.50", "1.4200"],
-        ["95100.00", "0.8500"],
-        ["95098.25", "12.0050"],
-      ],
-      asks: [
-        // [ Price, Quantity ] -> Sorted ascending (lowest to highest)
-        ["95102.00", "0.5000"],
-        ["95102.50", "3.1120"],
-        ["95104.00", "0.9840"],
-      ],
+      lastUpdateId: store.lastUpdateId,
+      timestamp: +new Date(),
+      bids,
+      asks,
     };
   };
 
@@ -1340,7 +1356,7 @@ export function createEngine({
       return resp;
     } else if (type === "cancel_order") {
       const resp = cancelOrder(payload as SelectOrderRecord);
-      console.dir(store, { depth: 10 });
+      // console.dir(store, { depth: 10 });
       return resp;
     } else if (type === "get_balances") {
       const { userId } = payload as { userId: string };
@@ -1404,6 +1420,7 @@ export function createEngine({
       return;
     } else if (type === "get_depth") {
       const { marketId } = payload as { marketId: string };
+
       return getMarketDepth(marketId);
     }
     throw new Error("Unsupported request type");
