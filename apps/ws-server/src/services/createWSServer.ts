@@ -1,10 +1,12 @@
-export const createWSServer = () => {
-  interface WebSocketData {
-    id: string;
-    marketId: string;
-    subscribedFeeds: Set<string>;
-  }
+import type { WebSocketData } from "../types";
 
+export const ValidFeeds = [
+  "last-traded-price",
+  "mark-price",
+  "depth",
+  "trades",
+];
+export const createWSServer = () => {
   const server = Bun.serve<WebSocketData>({
     port: 3010,
     fetch(req, server) {
@@ -28,14 +30,8 @@ export const createWSServer = () => {
       open(ws) {
         console.log("Connected to websocket server");
 
-        const validFeeds = [
-          "last-traded-price",
-          "mark-price",
-          "depth",
-          "trades",
-        ];
         for (const feed of ws.data.subscribedFeeds) {
-          if (validFeeds.includes(feed)) {
+          if (ValidFeeds.includes(feed)) {
             ws.subscribe(`feed:${ws.data.marketId}:${feed}`);
             ws.send(
               JSON.stringify({
