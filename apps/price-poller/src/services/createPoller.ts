@@ -79,7 +79,11 @@ export const createPoller = (sendUpdates: TSendToResponseStream) => {
 
       sendUpdates("spot_price_update", {
         SOL: lastPriceForSOL,
+      });
+      sendUpdates("spot_price_update", {
         BTC: lastPriceForBTC,
+      });
+      sendUpdates("spot_price_update", {
         ETH: lastPriceForETH,
       });
     }, INTERVAL);

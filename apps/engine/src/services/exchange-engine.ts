@@ -23,6 +23,7 @@ import {
   type TEngineRequestSchema,
   type TOrderDataForWriterSchema,
   type TWriterSchema,
+  type TWsServerSchema,
 } from "@repo/shared/redis-events";
 import type { TUploadToS3 } from "./upload-file";
 
@@ -838,7 +839,10 @@ export function createEngine({
     return null;
   };
 
-  const placeOrder = (payload: SelectOrderRecord) => {
+  const placeOrder = (
+    payload: SelectOrderRecord,
+    skipWebSocketPayload = false,
+  ) => {
     let { userId, marketId, positionType, orderType, price, initialMargin } =
       payload;
 
@@ -966,7 +970,25 @@ export function createEngine({
       user.collateral.locked += normalizedPayload.initialMargin;
     }
 
-    return matchOrder(normalizedPayload, orderbook, user);
+    if (skipWebSocketPayload) {
+      return matchOrder(normalizedPayload, orderbook, user);
+    }
+
+    store.lastUpdateId++;
+    const wsServer = {
+      depth: getMarketDepth(marketId),
+      lastTradedPrice: `${orderbook.lastTradedPrice}`,
+      indexPrice: `${orderbook.indexPrice}`,
+    };
+
+    const matchingResp = matchOrder(normalizedPayload, orderbook, user);
+    if (!matchingResp) return null;
+
+    return {
+      backend: matchingResp.backend,
+      writer: matchingResp.writer,
+      wsServer,
+    };
   };
   type TCancelOrderReturnType = {
     backend: {
@@ -979,6 +1001,7 @@ export function createEngine({
       };
     };
     writer: TWriterSchema;
+    wsServer: TWsServerSchema;
   };
   const cancelOrder = (order: SelectOrderRecord): TCancelOrderReturnType => {
     // if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward.
@@ -1032,6 +1055,13 @@ export function createEngine({
 
     order.status = "cancelled";
 
+    store.lastUpdateId++;
+    const wsServer = {
+      depth: getMarketDepth(order.marketId),
+      lastTradedPrice: `${orderbook.lastTradedPrice}`,
+      indexPrice: `${orderbook.indexPrice}`,
+    };
+
     return {
       backend: {
         order,
@@ -1055,6 +1085,7 @@ export function createEngine({
           ],
         },
       ],
+      wsServer,
     };
   };
 
@@ -1068,7 +1099,9 @@ export function createEngine({
       (pos) => pos.marketId === marketId,
     );
 
-    return { positions: marketPositions };
+    return {
+      backend: { positions: marketPositions },
+    };
   };
 
   const getClosedPositionsForMarket = (userId: string, marketId: string) => {
@@ -1081,7 +1114,9 @@ export function createEngine({
       (pos) => pos.marketId === marketId,
     );
 
-    return { closedPositions: marketPositions };
+    return {
+      backend: { closedPositions: marketPositions },
+    };
   };
 
   const liqudationChecks = (asset: TSupportedAssets, price: number) => {
@@ -1115,8 +1150,8 @@ export function createEngine({
             updatedAt: new Date(),
           };
 
-          const resp = placeOrder(newOrderData);
-          if (!resp) continue;
+          const resp = placeOrder(newOrderData, true);
+          if (!resp || !resp?.writer) continue;
           resp?.writer.unshift({
             table: "order_inserts",
             data: [
@@ -1150,8 +1185,8 @@ export function createEngine({
             updatedAt: new Date(),
           };
 
-          const resp = placeOrder(newOrderData);
-          if (!resp) continue;
+          const resp = placeOrder(newOrderData, true);
+          if (!resp || !resp?.writer) continue;
           resp?.writer.unshift({
             table: "order_inserts",
             data: [
@@ -1167,7 +1202,23 @@ export function createEngine({
       }
     }
 
-    return arrayToObjectUtil(allResponses);
+    const orderbook = store.orderbooks[marketId];
+    let wsServer: TWsServerSchema | null = null;
+    if (orderbook) {
+      store.lastUpdateId++;
+      wsServer = {
+        depth: getMarketDepth(marketId),
+        lastTradedPrice: `${orderbook.lastTradedPrice}`,
+        indexPrice: `${orderbook.indexPrice}`,
+      };
+    }
+
+    const liquidationRes = arrayToObjectUtil(allResponses);
+    return {
+      backend: liquidationRes.backend,
+      writer: liquidationRes.writer,
+      wsServer,
+    };
   };
 
   const arrayToObjectUtil = (allResponses: TMatchOrderFunctionResponse[]) => {
@@ -1295,6 +1346,9 @@ export function createEngine({
       asks,
     };
   };
+  const getMarketDepthForAPI = (marketId: string) => {
+    return { backend: getMarketDepth(marketId) };
+  };
 
   //
   const handle = ({
@@ -1318,7 +1372,9 @@ export function createEngine({
         store.users.set(userId, user);
       }
 
-      return { userId, balance: user.collateral.available };
+      return {
+        backend: { userId, balance: user.collateral.available },
+      };
     } else if (type === "onramp") {
       const { userId, amount } = payload as { userId: string; amount: number };
       let user = getUserById(userId);
@@ -1334,7 +1390,7 @@ export function createEngine({
         user.collateral.available += amount;
       }
 
-      return { userId, available: user.collateral.available };
+      return { backend: { userId, available: user.collateral.available } };
     } else if (type === "create_order") {
       // code to init user if missing
       const { userId } = payload as { userId: string };
@@ -1372,7 +1428,9 @@ export function createEngine({
         store.users.set(userId, user);
       }
       return {
-        balances: user.collateral,
+        backend: {
+          balances: user.collateral,
+        },
       };
     } else if (type === "get_open_positions_for_market") {
       const { userId, marketId } = payload as {
@@ -1387,23 +1445,13 @@ export function createEngine({
       };
       return getClosedPositionsForMarket(userId, marketId);
     } else if (type === "spot_price_update") {
-      const { BTC, ETH, SOL } = payload as {
-        SOL: string;
-        ETH: string;
-        BTC: string;
-      };
-      let resp: TMatchOrderFunctionResponse[] = [];
-      if (BTC !== null) {
-        resp.push(liqudationChecks("BTC", Number(BTC)));
+      if (Object.hasOwn(payload, "SOL") && Number(payload["SOL"])) {
+        return liqudationChecks("SOL", Number(payload["SOL"]));
+      } else if (Object.hasOwn(payload, "BTC") && Number(payload["BTC"])) {
+        return liqudationChecks("BTC", Number(payload["BTC"]));
+      } else if (Object.hasOwn(payload, "ETH") && Number(payload["ETH"])) {
+        return liqudationChecks("ETH", Number(payload["ETH"]));
       }
-      if (ETH !== null) {
-        resp.push(liqudationChecks("ETH", Number(ETH)));
-      }
-      if (SOL !== null) {
-        resp.push(liqudationChecks("SOL", Number(SOL)));
-      }
-
-      return arrayToObjectUtil(resp);
     } else if (type === "backup_store") {
       const { now } = payload as { now: string };
       const payloadNowDate = new Date(now);
@@ -1421,7 +1469,7 @@ export function createEngine({
     } else if (type === "get_depth") {
       const { marketId } = payload as { marketId: string };
 
-      return getMarketDepth(marketId);
+      return getMarketDepthForAPI(marketId);
     }
     throw new Error("Unsupported request type");
   };

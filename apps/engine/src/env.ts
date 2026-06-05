@@ -2,6 +2,7 @@ import z from "zod";
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production"]).default("development"),
+  APP_STAGE: z.enum(["dev", "prod"]).default("dev"),
   REDIS_URL: z.string().min(1).startsWith("redis://"),
   INCOMING_STREAM: z.string().min(1).default("backend-to-engine-trade-comms"),
   OUTGOING_STREAM: z.string().min(1).default("engine-to-backend-trade-comms"),
@@ -30,6 +31,8 @@ try {
   }
   throw error;
 }
+
+export const isDev = () => env.APP_STAGE === "dev";
 
 export default env;
 export { env };

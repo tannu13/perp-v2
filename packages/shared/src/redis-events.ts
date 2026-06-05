@@ -74,18 +74,31 @@ export const WriterSchema = z.array(
   ]),
 );
 export type TWriterSchema = z.infer<typeof WriterSchema>;
+
+const PriceAsString = z.string();
+const AvailableQtyAsString = z.string();
+export const MarketDepthSchema = z.object({
+  market: z.string(),
+  lastUpdateId: z.coerce.number(),
+  timestamp: z.coerce.number(),
+  bids: z.array(z.tuple([PriceAsString, AvailableQtyAsString])),
+  asks: z.array(z.tuple([PriceAsString, AvailableQtyAsString])),
+});
+export const WsServerSchema = z.object({
+  depth: MarketDepthSchema,
+  lastTradedPrice: z.string(),
+  indexPrice: z.string(),
+});
+export type TWsServerSchema = z.infer<typeof WsServerSchema>;
 export const EngineResponseSchema = z.discriminatedUnion("ok", [
   z.object({
     correlationId: z.string(),
     ok: z.literal(true),
-    data: z.union([
-      z.object({
-        backend: z.record(z.string(), z.unknown()).nullable(),
-        writer: WriterSchema.optional(),
-        wsServer: z.object({}).optional(),
-      }),
-      z.any(),
-    ]),
+    data: z.object({
+      backend: z.record(z.string(), z.unknown()).nullable(),
+      writer: WriterSchema.optional(),
+      wsServer: WsServerSchema.optional(),
+    }),
     error: z.literal(""),
   }),
   z.object({
