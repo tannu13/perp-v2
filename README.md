@@ -16,6 +16,20 @@ The ecosystem consists of several specialized microservices interacting seamless
 
 ---
 
+## Architectural Deep Dives & Trade-offs
+
+To achieve sub-millisecond execution while maintaining rigorous financial consistency, the system explicitly favors determinism over horizontal scalability of the engine instance.
+
+### 1. Single-Instance Determinism vs. Multiple-Instance With Shared State
+
+The In-Memory Matching Engine intentionally processes all market tickers sequentially through a single stream instance vs one market pair per engine instance as even in that case the user's balances would need to be shared among the instances and would require some sort of distributed lock contention on the balances. It wouldn't guarantee absolute determinism during crash recovery replays. For example - in first case some orders happened in one market and others rejected due to low balance because balance was reduced due to the first trade. In this case replaying the events, after a crash across multiple instances, might finalize in different orders being executed as another instance might be faster in this iteration vs in the actual series of events and might end up with different states of balances and could execute different trades.
+
+### 2. End-to-End Idempotency (Application vs. Transport Layer)
+
+To prevent duplicate state mutations during network retries or engine crashes, an exact-once processing semantic is enforced at the database layer. This is implemented by generating a correlation id at the origin of the request. I did not use redis stream message id because that'd be a transport layer id and might not survive retries by sender services in case of a crash or a timeout. I thought, because correlation id is generated at the source so it represents that action done by the user. Replaying it any number of times would still keep it same. Then this id is used in a transaction in the db writer service on a unique key col so that if that fails, all the related inserts & updates are skipped.
+
+---
+
 ## Key Operational Features
 
 ### 1. High Availability & Disaster Recovery (S3 Snapshots + Stream Replay)
