@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: perps-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: perps-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: tannnu13/perps-v2-backend:v1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://perps_user:mysecretpasswordfordb@host.minikube.internal:5432/perps_db"
+            - name: REDIS_URL
+              value: "redis://host.minikube.internal:6379"
+            - name: APP_PORT
+              value: "3000"
+            - name: NODE_ENV
+              value: development
+            - name: APP_STAGE
+              value: dev
+            - name: SALT_ROUNDS
+              value: "10"
+            - name: JWT_SECRET
+              value: 78f94758b2ff5a6d86dbab3bd2be0d96aee3c37b705bf7b4a3b7c7c94ceefa35
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: perps-app
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
