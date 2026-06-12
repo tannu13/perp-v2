@@ -1,4 +1,4 @@
-# Event-Driven Perpetual Futures Matching Engine
+# Event-Driven Perpetual Futures Matching Engine [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tannu13/perp-v2)
 
 A high-performance, fault-tolerant, and event-driven perpetual futures trading platform architecture. This repository implements a decoupled, distributed microservices system designed around an in-memory matching engine utilizing Redis Streams for asynchronous, high-throughput message bus communication.
 
