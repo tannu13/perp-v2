@@ -16,7 +16,7 @@ export const createUploader = () => {
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
     },
-    endpoint: isDev ? "http://localhost:9000" : undefined,
+    endpoint: isDev ? env.MINIO_ENDPOINT : undefined,
     forcePathStyle: isDev,
   });
 
