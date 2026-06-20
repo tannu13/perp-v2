@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine
+  namespace: perps-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engine
+  template:
+    metadata:
+      labels:
+        app: engine
+    spec:
+      containers:
+        - name: engine
+          image: tannnu13/perps-v2-engine:v2
+          env:
+            - name: NODE_ENV
+              value: development
+            - name: APP_STAGE
+              value: dev
+            - name: REDIS_URL
+              value: "redis://host.minikube.internal:6379"
+            - name: INCOMING_STREAM
+              value: backend-to-engine-trade-comms
+            - name: OUTGOING_STREAM
+              value: engine-to-backend-trade-comms
+            - name: LISTENER_GROUP
+              value: engine-group
+            - name: LISTENER_GROUP_CONSUMER
+              value: engine
+            - name: AWS_REGION
+              value: ap-south-1
+            - name: AWS_ACCESS_KEY_ID
+              value: fake-local-key
+            - name: AWS_SECRET_ACCESS_KEY
+              value: fake-local-secret
+            - name: AWS_BUCKET_NAME
+              value: s30-perps-store-backups-bucket-410940411202-ap-south-1-an
+            - name: MINIO_ENDPOINT
+              value: http://host.minikube.internal:9000

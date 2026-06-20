@@ -8,7 +8,7 @@ COPY packages/ ./packages/
 
 RUN bun install
 
-COPY . .
+COPY apps/backend ./apps/backend
 
 EXPOSE 3000
 

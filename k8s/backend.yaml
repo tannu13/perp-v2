@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: tannnu13/perps-v2-backend:v1
+          image: tannnu13/perps-v2-backend:v2
           ports:
             - containerPort: 3000
           env:

@@ -8,6 +8,6 @@ COPY packages/ ./packages/
 
 RUN bun install
 
-COPY . .
+COPY apps/engine ./apps/engine
 
 CMD ["bun", "apps/engine/src/index.ts"]
