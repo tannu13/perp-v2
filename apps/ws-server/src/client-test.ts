@@ -1,3 +1,5 @@
+import env from "./env";
+
 interface LastTradedPrice {
   price: number;
 }
@@ -35,7 +37,7 @@ interface DepthMessage {
 type PerpExchangeMessage = TradeMessage | MarkPriceMessage | DepthMessage;
 
 const ws = new WebSocket(
-  "ws://localhost:3010?feeds=last-traded-price,mark-price,depth&market_id=e3289213-372c-44d2-8cc8-2a6eb55b11b1",
+  `ws://localhost:${env.WS_SERVER_PORT}?feeds=last-traded-price,mark-price,depth&market_id=e3289213-372c-44d2-8cc8-2a6eb55b11b1`,
 );
 ws.onmessage = (event: MessageEvent) => {
   try {

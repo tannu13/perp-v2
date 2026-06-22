@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ws-server
+  namespace: perps-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ws-server
+  template:
+    metadata:
+      labels:
+        app: ws-server
+    spec:
+      containers:
+        - name: ws-server
+          image: tannnu13/perps-v2-ws-server:v1
+          ports:
+            - containerPort: 3010
+          env:
+            - name: WS_SERVER_PORT
+              value: "3010"
+            - name: REDIS_URL
+              value: redis://host.minikube.internal:6379
+            - name: ENGINE_RESPONSE_STREAM
+              value: engine-to-backend-trade-comms
+            - name: LISTENER_GROUP
+              value: ws-server-group
+            - name: LISTENER_GROUP_CONSUMER
+              value: ws-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ws-server-service
+  namespace: perps-app
+spec:
+  selector:
+    app: ws-server
+  ports:
+    - protocol: TCP
+      port: 3010
+      targetPort: 3010

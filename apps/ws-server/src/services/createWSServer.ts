@@ -1,3 +1,4 @@
+import env from "../env";
 import type { WebSocketData } from "../types";
 
 export const ValidFeeds = [
@@ -8,7 +9,7 @@ export const ValidFeeds = [
 ];
 export const createWSServer = () => {
   const server = Bun.serve<WebSocketData>({
-    port: 3010,
+    port: env.WS_SERVER_PORT,
     fetch(req, server) {
       const url = new URL(req.url);
       const feedsParam = url.searchParams.get("feeds");

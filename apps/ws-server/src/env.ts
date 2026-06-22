@@ -1,6 +1,7 @@
 import z from "zod";
 
 const EnvSchema = z.object({
+  WS_SERVER_PORT: z.coerce.number().positive().default(3010),
   REDIS_URL: z.string().min(1).startsWith("redis://"),
   ENGINE_RESPONSE_STREAM: z
     .string()
