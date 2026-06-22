@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-writer
+  namespace: perps-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-writer
+  template:
+    metadata:
+      labels:
+        app: db-writer
+    spec:
+      containers:
+        - name: db-writer
+          image: tannnu13/perps-v2-db-writer:v1
+          env:
+            - name: REDIS_URL
+              value: redis://host.minikube.internal:6379
+            - name: REQUEST_STREAM
+              value: backend-to-engine-trade-comms
+            - name: RESPONSE_STREAM
+              value: engine-to-backend-trade-comms
+            - name: LISTENER_GROUP
+              value: db-writer-group
+            - name: LISTENER_GROUP_CONSUMER
+              value: db-writer
+            - name: DATABASE_URL
+              value: postgresql://perps_user:mysecretpasswordfordb@host.minikube.internal:5432/perps_db
