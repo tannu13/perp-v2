@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: price-poller
+  namespace: perps-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: price-poller
+  template:
+    metadata:
+      labels:
+        app: price-poller
+    spec:
+      containers:
+        - name: price-poller
+          image: tannnu13/price-poller:v1
+          env:
+            - name: REDIS_URL
+              value: redis://host.minikube.internal:6379
+            - name: OUTGOING_STREAM
+              value: backend-to-engine-trade-comms
