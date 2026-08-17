@@ -1,0 +1,370 @@
+/* ============================================================================
+   PERP-V2 · DESIGN TOKENS
+   ----------------------------------------------------------------------------
+   LAYER 1  Primitives — raw, context-free values. Never used directly in JSX.
+   LAYER 2  Semantics  — purpose-driven aliases. These are what components use.
+
+   Dark-only by decision. A light theme is a Layer 2 remap; Layer 1 and every
+   component stay untouched. That indirection is the whole point.
+   ========================================================================== */
+
+/* `static` is load-bearing, not stylistic. A plain `@theme` block tree-shakes
+   any variable no utility class references — but a design system is consumed
+   through `var(--token)` in inline styles and third-party configs (the chart
+   library, the styleguide swatches) which Tailwind's scanner cannot see. Under
+   plain `@theme` those tokens resolve to nothing at runtime, silently, with no
+   build error. `static` emits every declared variable. */
+@theme static {
+  /* Clear Tailwind's defaults so the only tokens available are ours.
+     An undefined utility should fail loudly, not silently fall back. */
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --breakpoint-*: initial;
+  --ease-*: initial;
+
+  /* ==========================================================================
+     LAYER 1 · PRIMITIVES
+     ======================================================================== */
+
+  /* --- Neutral ------------------------------------------------------------
+     The backbone. Cool-cast near-blacks; the app is ~85% these values.
+     Steps are tight at the dark end because that is where panels separate. */
+  --color-neutral-1000: #000000;
+  --color-neutral-950: #0a0b0d;
+  --color-neutral-900: #101114;
+  --color-neutral-850: #16181c;
+  --color-neutral-800: #1c1f24;
+  --color-neutral-750: #22262c;
+  --color-neutral-700: #272b31;
+  --color-neutral-600: #3a3f47;
+  --color-neutral-500: #5c636e;
+  --color-neutral-400: #7c848f;
+  --color-neutral-300: #9ba3ae;
+  --color-neutral-200: #c4cad3;
+  --color-neutral-100: #e2e6eb;
+  --color-neutral-50: #f5f7fa;
+  --color-neutral-0: #ffffff;
+
+  /* --- Primary (interactive blue) -----------------------------------------
+     Deliberately NOT the buy green. In a trading UI, green must mean "long"
+     and nothing else — if the primary CTA were also green, every button would
+     read as a buy. Blue carries links, focus, selection, neutral CTAs. */
+  --color-primary-300: #7fb4ff;
+  --color-primary-400: #4f97ff;
+  --color-primary-500: #2e7cf6;
+  --color-primary-600: #1d63d2;
+  --color-primary-700: #164ba0;
+
+  /* --- Secondary (violet accent) -------------------------------------------
+     Leverage badges, promotional surfaces, "Convert"-class actions. */
+  --color-secondary-300: #c4b5fd;
+  --color-secondary-400: #a78bfa;
+  --color-secondary-500: #8b5cf6;
+  --color-secondary-600: #7038e0;
+
+  /* --- Directional: LONG / BUY ---------------------------------------------
+     The single most-repeated color in the product. Tuned to stay legible at
+     11px on #0a0b0d, which pure #00ff88-style greens do not. */
+  --color-long-300: #6df0b8;
+  --color-long-400: #34e39b;
+  --color-long-500: #00c278;
+  --color-long-600: #009e60;
+  --color-long-700: #007546;
+
+  /* --- Directional: SHORT / SELL ------------------------------------------- */
+  --color-short-300: #ff9b9b;
+  --color-short-400: #ff6b6b;
+  --color-short-500: #f0616d;
+  --color-short-600: #d14350;
+  --color-short-700: #9e2f3a;
+
+  /* --- Feedback ------------------------------------------------------------
+     Warning gets its own amber; it fires on margin health, where a red would
+     be confused with a short position. */
+  --color-warning-400: #ffc555;
+  --color-warning-500: #f5a524;
+  --color-warning-600: #cf8409;
+
+  --color-danger-400: #ff7a7a;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #c62f2f;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* ==========================================================================
+     LAYER 2 · SEMANTIC TOKENS
+     ======================================================================== */
+
+  /* --- Surfaces ------------------------------------------------------------
+     On dark, elevation reads through lightness + border, not shadow. Each step
+     up is a real background change; shadows only reinforce it. Inputs go
+     *darker* than their container so they read as recessed. */
+  --color-surface-base: var(--color-neutral-950);      /* app canvas          */
+  --color-surface-raised: var(--color-neutral-900);    /* panels, cards       */
+  --color-surface-overlay: var(--color-neutral-850);   /* dropdowns, popovers */
+  --color-surface-modal: var(--color-neutral-800);     /* dialogs, sheets     */
+  --color-surface-inset: #08090a;                      /* inputs, wells       */
+  --color-surface-hover: rgb(255 255 255 / 0.04);
+  --color-surface-active: rgb(255 255 255 / 0.08);
+  --color-surface-selected: rgb(46 124 246 / 0.12);
+  --color-surface-disabled: var(--color-neutral-850);
+
+  /* --- Text ----------------------------------------------------------------
+     Four steps is enough. A fifth always ends up ambiguous with the fourth. */
+  --color-text-primary: var(--color-neutral-100);      /* values, headings    */
+  --color-text-secondary: var(--color-neutral-300);    /* supporting copy     */
+  --color-text-tertiary: var(--color-neutral-400);     /* labels, col headers */
+  --color-text-disabled: var(--color-neutral-500);
+  --color-text-inverse: var(--color-neutral-950);      /* on long/primary fill*/
+  --color-text-link: var(--color-primary-400);
+
+  /* --- Borders -------------------------------------------------------------
+     subtle = table rows and panel splits (must nearly disappear).
+     strong = input outlines (must be findable without being loud). */
+  --color-border-subtle: var(--color-neutral-800);
+  --color-border-default: var(--color-neutral-700);
+  --color-border-strong: var(--color-neutral-600);
+  --color-border-focus: var(--color-primary-500);
+  --color-border-error: var(--color-danger-500);
+
+  /* --- Directional semantics ----------------------------------------------
+     Components reference these, never --color-long-500 directly. If the app
+     ever ships a colorblind mode, it is edited here and nowhere else. */
+  --color-buy: var(--color-long-500);
+  --color-buy-hover: var(--color-long-400);
+  --color-buy-active: var(--color-long-600);
+  --color-buy-text: var(--color-long-400);             /* green on dark bg    */
+  --color-buy-muted: rgb(0 194 120 / 0.12);            /* depth-bar fill      */
+  --color-buy-muted-strong: rgb(0 194 120 / 0.24);
+
+  --color-sell: var(--color-short-500);
+  --color-sell-hover: var(--color-short-400);
+  --color-sell-active: var(--color-short-600);
+  --color-sell-text: var(--color-short-400);
+  --color-sell-muted: rgb(240 97 109 / 0.12);
+  --color-sell-muted-strong: rgb(240 97 109 / 0.24);
+
+  /* --- Interactive ---------------------------------------------------------- */
+  --color-interactive: var(--color-primary-500);
+  --color-interactive-hover: var(--color-primary-400);
+  --color-interactive-active: var(--color-primary-600);
+  --color-interactive-muted: rgb(46 124 246 / 0.12);
+  --color-interactive-disabled: var(--color-neutral-700);
+
+  /* --- Feedback semantics --------------------------------------------------- */
+  --color-success: var(--color-long-500);
+  --color-success-muted: rgb(0 194 120 / 0.12);
+  --color-warning: var(--color-warning-500);
+  --color-warning-muted: rgb(245 165 36 / 0.12);
+  --color-danger: var(--color-danger-500);
+  --color-danger-muted: rgb(239 68 68 / 0.12);
+  --color-info: var(--color-primary-500);
+  --color-info-muted: rgb(46 124 246 / 0.12);
+
+  /* --- Margin health -------------------------------------------------------
+     Domain-specific ramp for liquidation proximity. Distinct from feedback so
+     a healthy account never shares a token with a success toast. */
+  --color-health-safe: var(--color-long-500);
+  --color-health-caution: var(--color-warning-500);
+  --color-health-risk: #ff8845;
+  --color-health-critical: var(--color-danger-500);
+
+  /* ==========================================================================
+     TYPOGRAPHY
+     Two families, hard limit — and one superfamily, which is the point.
+       Sans → IBM Plex Sans. Carries the entire UI.
+       Mono → IBM Plex Mono. Order IDs, tx hashes, API keys only.
+
+     Chosen over a neutral grotesque because mono and sans sit side by side
+     inside the same table row here. Sharing a skeleton, x-height and weight
+     axis is what keeps those columns optically aligned; an unrelated mono
+     pairing visibly steps up or down mid-row.
+
+     Numbers use tabular-nums via the `.tnum` utility so order-book columns
+     do not jitter as digits change — see globals.css.
+     ======================================================================== */
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Display — marketing / landing only. Never inside the terminal. */
+  --text-display-lg: 3rem;          /* 48 */
+  --text-display-lg--line-height: 1.08;
+  --text-display-lg--letter-spacing: -0.03em;
+  --text-display-lg--font-weight: 600;
+
+  --text-display-md: 2.25rem;       /* 36 */
+  --text-display-md--line-height: 1.14;
+  --text-display-md--letter-spacing: -0.025em;
+  --text-display-md--font-weight: 600;
+
+  /* Heading */
+  --text-heading-lg: 1.75rem;       /* 28 */
+  --text-heading-lg--line-height: 1.2;
+  --text-heading-lg--letter-spacing: -0.02em;
+  --text-heading-lg--font-weight: 600;
+
+  --text-heading-md: 1.375rem;      /* 22 */
+  --text-heading-md--line-height: 1.26;
+  --text-heading-md--letter-spacing: -0.015em;
+  --text-heading-md--font-weight: 600;
+
+  --text-heading-sm: 1.125rem;      /* 18 */
+  --text-heading-sm--line-height: 1.33;
+  --text-heading-sm--letter-spacing: -0.01em;
+  --text-heading-sm--font-weight: 600;
+
+  /* Body — body-md is the app default. */
+  --text-body-lg: 1rem;             /* 16 */
+  --text-body-lg--line-height: 1.5;
+  --text-body-lg--letter-spacing: 0em;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 0.875rem;         /* 14 */
+  --text-body-md--line-height: 1.45;
+  --text-body-md--letter-spacing: 0em;
+  --text-body-md--font-weight: 400;
+
+  --text-body-sm: 0.8125rem;        /* 13 — the trading-table workhorse */
+  --text-body-sm--line-height: 1.4;
+  --text-body-sm--letter-spacing: 0em;
+  --text-body-sm--font-weight: 400;
+
+  /* Caption / micro */
+  --text-caption: 0.75rem;          /* 12 */
+  --text-caption--line-height: 1.35;
+  --text-caption--letter-spacing: 0.005em;
+  --text-caption--font-weight: 400;
+
+  --text-micro: 0.6875rem;          /* 11 — uppercase column headers, badges */
+  --text-micro--line-height: 1.3;
+  --text-micro--letter-spacing: 0.04em;
+  --text-micro--font-weight: 500;
+
+  /* Numeric — always pair with `.tnum`. Separate from body because price
+     readouts need tighter tracking and heavier weight at the same size. */
+  --text-num-xl: 1.5rem;            /* 24 — market header last price */
+  --text-num-xl--line-height: 1.16;
+  --text-num-xl--letter-spacing: -0.015em;
+  --text-num-xl--font-weight: 600;
+
+  --text-num-lg: 1.25rem;           /* 20 — order-book mid price */
+  --text-num-lg--line-height: 1.2;
+  --text-num-lg--letter-spacing: -0.01em;
+  --text-num-lg--font-weight: 600;
+
+  --text-num-md: 0.8125rem;         /* 13 — book rows, table cells */
+  --text-num-md--line-height: 1.38;
+  --text-num-md--letter-spacing: 0em;
+  --text-num-md--font-weight: 500;
+
+  --text-num-sm: 0.75rem;           /* 12 — dense secondary figures */
+  --text-num-sm--line-height: 1.33;
+  --text-num-sm--letter-spacing: 0em;
+  --text-num-sm--font-weight: 500;
+
+  /* ==========================================================================
+     SPACING
+     4px base grid. Tailwind v4 derives every step from this multiplier, so
+     p-1=4px, p-2=8px, p-3=12px … Approved subset for this product:
+       0.5(2) 1(4) 1.5(6) 2(8) 3(12) 4(16) 5(20) 6(24) 8(32) 10(40) 12(48) 16(64)
+     Dense terminal surfaces live almost entirely in 1–3.
+     ======================================================================== */
+  --spacing: 0.25rem;
+
+  /* ==========================================================================
+     RADII
+     ======================================================================== */
+  --radius-none: 0px;
+  --radius-xs: 3px;      /* depth-bar fills, micro badges       */
+  --radius-sm: 4px;      /* tags, status pills, small controls  */
+  --radius-md: 6px;      /* buttons, inputs, selects — default  */
+  --radius-lg: 8px;      /* cards, panels                       */
+  --radius-xl: 12px;     /* modals, slide-overs                 */
+  --radius-2xl: 16px;    /* marketing surfaces                  */
+  --radius-full: 9999px; /* avatars, toggles, segmented pills   */
+
+  /* ==========================================================================
+     ELEVATION
+     Shadow alone is nearly invisible on #0a0b0d, so every tier pairs a shadow
+     with its surface token. The ring tiers are focus/validation, not depth.
+     ======================================================================== */
+  --shadow-e0: none;
+  --shadow-e1: 0 1px 2px 0 rgb(0 0 0 / 0.40);
+  --shadow-e2: 0 4px 12px -2px rgb(0 0 0 / 0.50), 0 2px 4px -2px rgb(0 0 0 / 0.40);
+  --shadow-e3: 0 12px 32px -6px rgb(0 0 0 / 0.60), 0 4px 8px -4px rgb(0 0 0 / 0.50);
+  --shadow-e4: 0 24px 64px -12px rgb(0 0 0 / 0.70);
+
+  --shadow-focus: 0 0 0 3px rgb(46 124 246 / 0.35);
+  --shadow-focus-error: 0 0 0 3px rgb(239 68 68 / 0.35);
+  --shadow-glow-buy: 0 0 0 1px rgb(0 194 120 / 0.40), 0 4px 16px -4px rgb(0 194 120 / 0.30);
+  --shadow-glow-sell: 0 0 0 1px rgb(240 97 109 / 0.40), 0 4px 16px -4px rgb(240 97 109 / 0.30);
+
+  /* ==========================================================================
+     MOTION
+     Trading UIs punish slow animation — nothing that gates a click exceeds
+     120ms. `base` is for surfaces, `slow` for panels and sheets only.
+     ======================================================================== */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-instant: 80ms;
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+
+  --animate-flash-buy: flash-buy 400ms var(--ease-out-quart);
+  --animate-flash-sell: flash-sell 400ms var(--ease-out-quart);
+
+  /* ==========================================================================
+     BREAKPOINTS
+     Three primary targets, two transitional. Mobile-first: unprefixed styles
+     are the phone layout.
+       (base)  <768   Mobile      · single column, order form in a bottom sheet
+       md:     ≥768   Tablet      · transitional, 2-up panels
+       lg:     ≥1024  Small laptop· chart + book left, order form docked right
+       xl:     ≥1440  Desktop     · full three-column terminal
+       2xl:    ≥1920  Big screen  · widened book + persistent bottom tabs
+     ======================================================================== */
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-2xl: 1920px;
+
+  /* ==========================================================================
+     LAYOUT CONSTANTS
+     Fixed chrome dimensions, tokenized so panels can compute against them
+     with calc() instead of hardcoding magic numbers.
+     ======================================================================== */
+  --size-header: 56px;
+  --size-market-bar: 64px;
+  --size-bottom-nav: 56px;        /* mobile only */
+  --size-order-form: 320px;       /* lg: docked right rail  */
+  --size-order-form-xl: 344px;    /* xl: slightly roomier   */
+  --size-orderbook: 288px;
+  --size-orderbook-xl: 320px;
+  --size-row: 22px;               /* order-book row height  */
+  --size-control-sm: 28px;
+  --size-control-md: 36px;
+  --size-control-lg: 44px;        /* min touch target on mobile */
+}
+
+/* ============================================================================
+   KEYFRAMES
+   Price-tick flashes. The order book repaints constantly; a flash is the only
+   affordance that shows *which* level moved.
+   ========================================================================== */
+@keyframes flash-buy {
+  0%   { background-color: var(--color-buy-muted-strong); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-sell {
+  0%   { background-color: var(--color-sell-muted-strong); }
+  100% { background-color: transparent; }
+}

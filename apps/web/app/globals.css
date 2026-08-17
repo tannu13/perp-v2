@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+/* ============================================================================
+   BASE
+   ========================================================================== */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: 1.45;
+  }
+
+  /* Slashed zero on monospace only. Order ids and tx hashes are read character
+     by character and often transcribed, where 0 vs O is a real failure mode;
+     in running prose the slash is just noise. */
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-feature-settings: "zero" 1;
+  }
+
+  /* Never let a native focus ring through — every interactive atom defines
+     its own via --shadow-focus. */
+  :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background-color: var(--color-interactive-muted);
+    color: var(--color-text-primary);
+  }
+
+  /* Kill spinner arrows — quantity inputs are driven by our own steppers. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+/* ============================================================================
+   CUSTOM UTILITIES
+   Tailwind v4 exposes theme namespaces for color/text/radius/shadow/ease but
+   NOT for duration — `--duration-*` in @theme defines the variable without
+   generating a utility. These register the named speeds as real classes so
+   components never hardcode a millisecond value.
+   ========================================================================== */
+@utility duration-instant {
+  transition-duration: var(--duration-instant);
+}
+@utility duration-fast {
+  transition-duration: var(--duration-fast);
+}
+@utility duration-base {
+  transition-duration: var(--duration-base);
+}
+@utility duration-slow {
+  transition-duration: var(--duration-slow);
+}
+
+/* ============================================================================
+   UTILITIES
+   ========================================================================== */
+@layer utilities {
+  /* Tabular figures. Mandatory on every changing number — without it, order
+     book columns shiver on each tick as glyph widths shift. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Thin scrollbars for dense panels (book, trades, tables). */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-neutral-700) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-neutral-700);
+    border-radius: var(--radius-full);
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-neutral-600);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
