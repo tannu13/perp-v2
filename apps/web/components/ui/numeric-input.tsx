@@ -15,6 +15,12 @@ export type NumericInputProps = Omit<
   max?: number;
   /** Unit shown inside the field — USD, SOL, %. */
   suffix?: string;
+  /**
+   * `lg` is for the order ticket specifically: 44px tall with 20px figures.
+   * The whole screen is numbers, so the two fields where the user commits money
+   * have to outweigh the surrounding readouts. Tables stay at `md`.
+   */
+  inputSize?: "md" | "lg";
 };
 
 /**
@@ -34,11 +40,13 @@ export function NumericInput({
   min,
   max,
   suffix,
+  inputSize = "md",
   id,
   disabled,
   ...props
 }: NumericInputProps) {
   const field = useFieldContext();
+  const lg = inputSize === "lg";
 
   const clamp = (n: number) => {
     if (min !== undefined && n < min) return min;
@@ -84,7 +92,10 @@ export function NumericInput({
         }}
         className={cn(
           inputBase,
-          "h-(--size-control-md) pl-3 text-num-md tnum",
+          "tnum",
+          lg
+            ? "h-(--size-control-lg) pl-3.5 text-num-lg"
+            : "h-(--size-control-md) pl-3 text-num-md",
           suffix ? "pr-24" : "pr-20",
           className,
         )}

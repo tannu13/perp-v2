@@ -13,7 +13,8 @@ import { CheckIcon, MinusIcon } from "./icons";
 const controlBox = [
   "pointer-events-none absolute left-0 top-0 flex items-center justify-center",
   "border transition-colors duration-fast ease-out-quart",
-  "border-border-strong bg-surface-inset text-transparent",
+  // Raised like every other input — a recessed box disappeared on dark panels.
+  "border-border-strong bg-surface-input text-transparent",
   "peer-hover:border-border-focus/60",
   "peer-checked:border-interactive peer-checked:bg-interactive peer-checked:text-white",
   "peer-focus-visible:border-border-focus peer-focus-visible:shadow-focus",

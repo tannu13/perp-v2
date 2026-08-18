@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { TooltipProvider } from "@/components/ui";
 import "./globals.css";
 
 /**
@@ -33,7 +34,13 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* Shared tooltip timing — hovering between adjacent tooltips should
+            not restart the open delay each time. */}
+        <TooltipProvider delayDuration={200} skipDelayDuration={400}>
+          {children}
+        </TooltipProvider>
+      </body>
     </html>
   );
 }

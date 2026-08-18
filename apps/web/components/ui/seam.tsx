@@ -60,24 +60,17 @@ export function Seam({
   const rightFill = intent === "directional" ? "bg-sell" : "bg-border-strong";
 
   // The value sits ON the join, not centred in the row — that is the whole idea.
-  // Clamped so an extreme ratio parks it inside the track instead of colliding
-  // with the edge labels or overflowing the container.
-  const valueLeft = Math.min(Math.max(leftPct, 16), 84);
+  // It renders BELOW the bar rather than above: in a narrow container (the 320px
+  // order-form rail) an extreme ratio put it straight through the side labels.
+  // Clamped so it still parks inside the track at 0% or 100%.
+  const valueLeft = Math.min(Math.max(leftPct, 8), 92);
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      {(leftLabel || value || rightLabel) && (
-        <div className="relative flex items-baseline justify-between gap-2 text-micro tnum">
-          <span className="text-text-tertiary">{leftLabel}</span>
-          {value && (
-            <span
-              className="absolute -translate-x-1/2 font-mono whitespace-nowrap text-text-primary transition-all duration-base ease-out-quart"
-              style={{ left: `${valueLeft}%` }}
-            >
-              {value}
-            </span>
-          )}
-          <span className="text-text-tertiary">{rightLabel}</span>
+      {(leftLabel || rightLabel) && (
+        <div className="flex items-baseline justify-between gap-2 text-micro tnum">
+          <span className="truncate text-text-tertiary">{leftLabel}</span>
+          <span className="truncate text-text-tertiary">{rightLabel}</span>
         </div>
       )}
 
@@ -105,6 +98,17 @@ export function Seam({
           aria-hidden
         />
       </div>
+
+      {value && (
+        <div className="relative h-3.5">
+          <span
+            className="absolute -translate-x-1/2 font-mono text-micro tnum whitespace-nowrap text-text-primary transition-all duration-base ease-out-quart"
+            style={{ left: `${valueLeft}%` }}
+          >
+            {value}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

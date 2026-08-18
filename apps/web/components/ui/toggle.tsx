@@ -51,7 +51,7 @@ export function Toggle({
         <span
           className={cn(
             "pointer-events-none absolute inset-0 rounded-full border",
-            "border-border-strong bg-surface-inset",
+            "border-border-strong bg-surface-input",
             "transition-colors duration-fast ease-out-quart",
             "peer-hover:border-border-focus/60",
             "peer-checked:border-interactive peer-checked:bg-interactive",

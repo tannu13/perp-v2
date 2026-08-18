@@ -111,13 +111,22 @@ export const designDecisions: Decision[] = [
       "Less styling control — the native select's open dropdown is OS-rendered and cannot be themed beyond option colors.",
   },
   {
-    id: "inset-darker",
-    title: "Inputs are recessed, not raised",
-    choice: "--color-surface-inset sits below the canvas",
+    id: "inset-reversed",
+    title: "Inputs are raised — reversed after review",
+    choice: "--color-surface-input sits above the panel",
     rationale:
-      "On dark, a lighter input on a dark panel reads as a floating card. Going darker is what makes a field read as something you type into.",
+      "The first pass recessed inputs on the theory that a well reads as 'type here'. In the built terminal they disappeared into the page, and every comparable product (Backpack, Binance, Bybit, Hyperliquid, dYdX) raises inputs on dark themes. The minority convention lost on contact with the real screen.",
     tradeoff:
-      "Inverts the usual light-theme instinct, so it consistently surprises people until they see it in place.",
+      "surface-inset had to be re-scoped to genuinely recessed things — slider grooves, table headers — rather than deleted, so the token now means something narrower than its name suggests.",
+  },
+  {
+    id: "dimmed-directionals",
+    title: "Directional ramps dimmed",
+    choice: "Greens ~8-11:1 down to ~6.4-7.6:1",
+    rationale:
+      "Measured rather than eyeballed: the originals sat far above the 4.5:1 AA floor, and on a screen that is mostly green and red that surplus read as glare. Every step still clears AA for body text.",
+    tradeoff:
+      "Less headroom for future dark-on-colour combinations, and short-600 is now large-text-only at 3.4:1.",
   },
 ];
 
@@ -205,6 +214,20 @@ export const buildSteps: Step[] = [
   },
   {
     phase: "07",
+    title: "Design review pass",
+    status: "done",
+    body: "First round of feedback against the built terminal. Four of five points held; the fifth was misdiagnosed in a useful way — the % buttons and the leverage slider were read as duplicates, which is a labelling failure rather than a redundant control.",
+    detail: [
+      "Inputs raised instead of recessed, 44px with 20px figures in the ticket only — tables stay dense",
+      "Leverage slider rebuilt: its track was surface-inset on a dark panel, so only the thumb was visible",
+      "% row labelled 'of buying power' and grouped with Quantity; leverage moved behind a divider",
+      "Directional ramps dimmed against measured contrast, muted fills 24% → 22%",
+      "Ticket Seam cut — it showed nothing at 0% and Margin required already states it",
+      "Post/reduce-only collapsed behind an Advanced disclosure",
+    ],
+  },
+  {
+    phase: "08",
     title: "Layouts and patterns",
     status: "next",
     body: "OrderBook, TradesFeed, DataTable, OrderForm and the responsive terminal shell across all three targets.",

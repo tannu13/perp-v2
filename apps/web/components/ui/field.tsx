@@ -98,11 +98,12 @@ export function Field({
 
 /** Shared input chrome, so every text-entry control looks identical. */
 export const inputBase = [
-  "w-full rounded-md border bg-surface-inset text-text-primary",
+  // Raised, not recessed — see the surface-input token note.
+  "w-full rounded-md border bg-surface-input text-text-primary",
   "placeholder:text-text-disabled",
   "transition-colors duration-fast ease-out-quart",
-  "border-border-strong",
-  "hover:border-border-focus/60",
+  "border-border-default",
+  "hover:border-border-strong hover:bg-surface-input-hover",
   "focus-visible:outline-none focus-visible:border-border-focus focus-visible:shadow-focus",
   "forced-colors:focus-visible:outline-2 forced-colors:focus-visible:outline-offset-2",
   "disabled:cursor-not-allowed disabled:border-border-subtle disabled:bg-surface-disabled disabled:text-text-disabled",

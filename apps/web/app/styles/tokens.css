@@ -66,20 +66,26 @@
   --color-secondary-600: #7038e0;
 
   /* --- Directional: LONG / BUY ---------------------------------------------
-     The single most-repeated color in the product. Tuned to stay legible at
-     11px on #0a0b0d, which pure #00ff88-style greens do not. */
-  --color-long-300: #6df0b8;
-  --color-long-400: #34e39b;
-  --color-long-500: #00c278;
-  --color-long-600: #009e60;
-  --color-long-700: #007546;
+     The single most-repeated color in the product.
 
-  /* --- Directional: SHORT / SELL ------------------------------------------- */
-  --color-short-300: #ff9b9b;
-  --color-short-400: #ff6b6b;
-  --color-short-500: #f0616d;
-  --color-short-600: #d14350;
-  --color-short-700: #9e2f3a;
+     Deliberately dimmed from the first pass. The originals measured 8–11:1
+     against the panel where AA needs 4.5 — that excess headroom read as glare
+     across a screen that is mostly green and red. Every step below still
+     clears AA for body text; the ratio is noted so nobody "brightens it back"
+     without seeing the cost. */
+  --color-long-300: #5ac698; /* 8.96:1 */
+  --color-long-400: #2bba7f; /* 7.59:1 — green type on dark */
+  --color-long-500: #00ac6a; /* 6.37:1 — solid fills */
+  --color-long-600: #009057; /* 4.60:1 */
+  --color-long-700: #00693f;
+
+  /* --- Directional: SHORT / SELL -------------------------------------------
+     Less headroom than the greens, so these move less. */
+  --color-short-300: #dd8686; /* 7.03:1 */
+  --color-short-400: #e56060; /* 5.58:1 — red type on dark */
+  --color-short-500: #d85762; /* 4.92:1 — solid fills */
+  --color-short-600: #b93b47; /* large text / fills only */
+  --color-short-700: #8c2c36;
 
   /* --- Feedback ------------------------------------------------------------
      Warning gets its own amber; it fires on margin health, where a red would
@@ -101,13 +107,20 @@
 
   /* --- Surfaces ------------------------------------------------------------
      On dark, elevation reads through lightness + border, not shadow. Each step
-     up is a real background change; shadows only reinforce it. Inputs go
-     *darker* than their container so they read as recessed. */
-  --color-surface-base: var(--color-neutral-950);      /* app canvas          */
-  --color-surface-raised: var(--color-neutral-900);    /* panels, cards       */
-  --color-surface-overlay: var(--color-neutral-850);   /* dropdowns, popovers */
-  --color-surface-modal: var(--color-neutral-800);     /* dialogs, sheets     */
-  --color-surface-inset: #08090a;                      /* inputs, wells       */
+     up is a real background change; shadows only reinforce it. */
+  --color-surface-base: var(--color-neutral-950); /* app canvas          */
+  --color-surface-raised: var(--color-neutral-900); /* panels, cards       */
+  --color-surface-overlay: var(--color-neutral-850); /* dropdowns, popovers */
+  --color-surface-modal: var(--color-neutral-800); /* dialogs, sheets     */
+  /* Inputs sit ABOVE their container, not below.
+     The first pass recessed them (darker than the panel) on the theory that a
+     well reads as "type here". In practice they vanished into the page — and
+     every comparable terminal (Backpack, Binance, Bybit, Hyperliquid, dYdX)
+     raises inputs on dark themes. `surface-inset` is kept for things that
+     genuinely are recessed: slider tracks, table headers, meter grooves. */
+  --color-surface-input: #1a1d22; /* text fields         */
+  --color-surface-input-hover: #1f232a;
+  --color-surface-inset: #08090a; /* tracks, wells       */
   --color-surface-hover: rgb(255 255 255 / 0.04);
   --color-surface-active: rgb(255 255 255 / 0.08);
   --color-surface-selected: rgb(46 124 246 / 0.12);
@@ -115,11 +128,11 @@
 
   /* --- Text ----------------------------------------------------------------
      Four steps is enough. A fifth always ends up ambiguous with the fourth. */
-  --color-text-primary: var(--color-neutral-100);      /* values, headings    */
-  --color-text-secondary: var(--color-neutral-300);    /* supporting copy     */
-  --color-text-tertiary: var(--color-neutral-400);     /* labels, col headers */
+  --color-text-primary: var(--color-neutral-100); /* values, headings    */
+  --color-text-secondary: var(--color-neutral-300); /* supporting copy     */
+  --color-text-tertiary: var(--color-neutral-400); /* labels, col headers */
   --color-text-disabled: var(--color-neutral-500);
-  --color-text-inverse: var(--color-neutral-950);      /* on long/primary fill*/
+  --color-text-inverse: var(--color-neutral-950); /* on long/primary fill*/
   --color-text-link: var(--color-primary-400);
 
   /* --- Borders -------------------------------------------------------------
@@ -137,16 +150,18 @@
   --color-buy: var(--color-long-500);
   --color-buy-hover: var(--color-long-400);
   --color-buy-active: var(--color-long-600);
-  --color-buy-text: var(--color-long-400);             /* green on dark bg    */
-  --color-buy-muted: rgb(0 194 120 / 0.12);            /* depth-bar fill      */
-  --color-buy-muted-strong: rgb(0 194 120 / 0.24);
+  --color-buy-text: var(--color-long-400); /* green on dark bg    */
+  /* Depth-bar and selected-state fills. Pulled down with the ramps — at 24%
+     the active buy/sell segment was one of the loudest things on screen. */
+  --color-buy-muted: rgb(0 172 106 / 0.14); /* depth-bar fill      */
+  --color-buy-muted-strong: rgb(0 172 106 / 0.22);
 
   --color-sell: var(--color-short-500);
   --color-sell-hover: var(--color-short-400);
   --color-sell-active: var(--color-short-600);
   --color-sell-text: var(--color-short-400);
-  --color-sell-muted: rgb(240 97 109 / 0.12);
-  --color-sell-muted-strong: rgb(240 97 109 / 0.24);
+  --color-sell-muted: rgb(216 87 98 / 0.14);
+  --color-sell-muted-strong: rgb(216 87 98 / 0.22);
 
   /* --- Interactive ---------------------------------------------------------- */
   --color-interactive: var(--color-primary-500);
@@ -188,81 +203,93 @@
      do not jitter as digits change — see globals.css.
      ======================================================================== */
 
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans:
+    var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Display — marketing / landing only. Never inside the terminal. */
-  --text-display-lg: 3rem;          /* 48 */
+  --text-display-lg: 3rem; /* 48 */
   --text-display-lg--line-height: 1.08;
   --text-display-lg--letter-spacing: -0.03em;
   --text-display-lg--font-weight: 600;
 
-  --text-display-md: 2.25rem;       /* 36 */
+  --text-display-md: 2.25rem; /* 36 */
   --text-display-md--line-height: 1.14;
   --text-display-md--letter-spacing: -0.025em;
   --text-display-md--font-weight: 600;
 
   /* Heading */
-  --text-heading-lg: 1.75rem;       /* 28 */
+  --text-heading-lg: 1.75rem; /* 28 */
   --text-heading-lg--line-height: 1.2;
   --text-heading-lg--letter-spacing: -0.02em;
   --text-heading-lg--font-weight: 600;
 
-  --text-heading-md: 1.375rem;      /* 22 */
+  --text-heading-md: 1.375rem; /* 22 */
   --text-heading-md--line-height: 1.26;
   --text-heading-md--letter-spacing: -0.015em;
   --text-heading-md--font-weight: 600;
 
-  --text-heading-sm: 1.125rem;      /* 18 */
+  --text-heading-sm: 1.125rem; /* 18 */
   --text-heading-sm--line-height: 1.33;
   --text-heading-sm--letter-spacing: -0.01em;
   --text-heading-sm--font-weight: 600;
 
   /* Body — body-md is the app default. */
-  --text-body-lg: 1rem;             /* 16 */
+  --text-body-lg: 1rem; /* 16 */
   --text-body-lg--line-height: 1.5;
   --text-body-lg--letter-spacing: 0em;
   --text-body-lg--font-weight: 400;
 
-  --text-body-md: 0.875rem;         /* 14 */
+  --text-body-md: 0.875rem; /* 14 */
   --text-body-md--line-height: 1.45;
   --text-body-md--letter-spacing: 0em;
   --text-body-md--font-weight: 400;
 
-  --text-body-sm: 0.8125rem;        /* 13 — the trading-table workhorse */
+  --text-body-sm: 0.8125rem; /* 13 — the trading-table workhorse */
   --text-body-sm--line-height: 1.4;
   --text-body-sm--letter-spacing: 0em;
   --text-body-sm--font-weight: 400;
 
   /* Caption / micro */
-  --text-caption: 0.75rem;          /* 12 */
+  --text-caption: 0.75rem; /* 12 */
   --text-caption--line-height: 1.35;
   --text-caption--letter-spacing: 0.005em;
   --text-caption--font-weight: 400;
 
-  --text-micro: 0.6875rem;          /* 11 — uppercase column headers, badges */
+  --text-micro: 0.6875rem; /* 11 — uppercase column headers, badges */
   --text-micro--line-height: 1.3;
   --text-micro--letter-spacing: 0.04em;
   --text-micro--font-weight: 500;
 
   /* Numeric — always pair with `.tnum`. Separate from body because price
      readouts need tighter tracking and heavier weight at the same size. */
-  --text-num-xl: 1.5rem;            /* 24 — market header last price */
+  --text-num-xl: 1.5rem; /* 24 — market header last price */
   --text-num-xl--line-height: 1.16;
   --text-num-xl--letter-spacing: -0.015em;
   --text-num-xl--font-weight: 600;
 
-  --text-num-lg: 1.25rem;           /* 20 — order-book mid price */
+  --text-num-lg: 1.25rem; /* 20 — order-book mid price */
   --text-num-lg--line-height: 1.2;
   --text-num-lg--letter-spacing: -0.01em;
   --text-num-lg--font-weight: 600;
 
-  --text-num-md: 0.8125rem;         /* 13 — book rows, table cells */
-  --text-num-md--line-height: 1.38;
+  /* Stays at 500 — this is the weight for uncoloured figures.
+     Coloured columns override to 400 locally (see OrderBook / TradesFeed):
+     optical weight is font-weight PLUS colour, so a saturated red or green at
+     400 reads level with a grey at 500. Applying 400 to the whole row instead
+     made the neutral columns limp, since they have nothing but weight holding
+     them up.
+
+     400 is the floor regardless. Only Plex Sans 400/500/600 are loaded, and
+     browsers synthesise bolder faces but never lighter ones — `font-weight: 300`
+     measures byte-identical to 400 here. Light-on-dark also thins optically, so
+     a real 300 would be the wrong call for figures people trade against. */
+  --text-num-md: 0.875rem; /* 14 — book rows, table cells */
+  --text-num-md--line-height: 1.36;
   --text-num-md--letter-spacing: 0em;
   --text-num-md--font-weight: 500;
 
-  --text-num-sm: 0.75rem;           /* 12 — dense secondary figures */
+  --text-num-sm: 0.8125rem; /* 13 — dense secondary figures */
   --text-num-sm--line-height: 1.33;
   --text-num-sm--letter-spacing: 0em;
   --text-num-sm--font-weight: 500;
@@ -280,12 +307,12 @@
      RADII
      ======================================================================== */
   --radius-none: 0px;
-  --radius-xs: 3px;      /* depth-bar fills, micro badges       */
-  --radius-sm: 4px;      /* tags, status pills, small controls  */
-  --radius-md: 6px;      /* buttons, inputs, selects — default  */
-  --radius-lg: 8px;      /* cards, panels                       */
-  --radius-xl: 12px;     /* modals, slide-overs                 */
-  --radius-2xl: 16px;    /* marketing surfaces                  */
+  --radius-xs: 3px; /* depth-bar fills, micro badges       */
+  --radius-sm: 4px; /* tags, status pills, small controls  */
+  --radius-md: 6px; /* buttons, inputs, selects — default  */
+  --radius-lg: 8px; /* cards, panels                       */
+  --radius-xl: 12px; /* modals, slide-overs                 */
+  --radius-2xl: 16px; /* marketing surfaces                  */
   --radius-full: 9999px; /* avatars, toggles, segmented pills   */
 
   /* ==========================================================================
@@ -294,15 +321,19 @@
      with its surface token. The ring tiers are focus/validation, not depth.
      ======================================================================== */
   --shadow-e0: none;
-  --shadow-e1: 0 1px 2px 0 rgb(0 0 0 / 0.40);
-  --shadow-e2: 0 4px 12px -2px rgb(0 0 0 / 0.50), 0 2px 4px -2px rgb(0 0 0 / 0.40);
-  --shadow-e3: 0 12px 32px -6px rgb(0 0 0 / 0.60), 0 4px 8px -4px rgb(0 0 0 / 0.50);
-  --shadow-e4: 0 24px 64px -12px rgb(0 0 0 / 0.70);
+  --shadow-e1: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-e2:
+    0 4px 12px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-e3:
+    0 12px 32px -6px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.5);
+  --shadow-e4: 0 24px 64px -12px rgb(0 0 0 / 0.7);
 
   --shadow-focus: 0 0 0 3px rgb(46 124 246 / 0.35);
   --shadow-focus-error: 0 0 0 3px rgb(239 68 68 / 0.35);
-  --shadow-glow-buy: 0 0 0 1px rgb(0 194 120 / 0.40), 0 4px 16px -4px rgb(0 194 120 / 0.30);
-  --shadow-glow-sell: 0 0 0 1px rgb(240 97 109 / 0.40), 0 4px 16px -4px rgb(240 97 109 / 0.30);
+  --shadow-glow-buy:
+    0 0 0 1px rgb(0 194 120 / 0.4), 0 4px 16px -4px rgb(0 194 120 / 0.3);
+  --shadow-glow-sell:
+    0 0 0 1px rgb(240 97 109 / 0.4), 0 4px 16px -4px rgb(240 97 109 / 0.3);
 
   /* ==========================================================================
      MOTION
@@ -344,15 +375,19 @@
      ======================================================================== */
   --size-header: 56px;
   --size-market-bar: 64px;
-  --size-bottom-nav: 56px;        /* mobile only */
-  --size-order-form: 320px;       /* lg: docked right rail  */
-  --size-order-form-xl: 344px;    /* xl: slightly roomier   */
+  --size-bottom-nav: 56px; /* mobile only */
+  --size-order-form: 320px; /* lg: docked right rail  */
+  --size-order-form-xl: 344px; /* xl: slightly roomier   */
   --size-orderbook: 288px;
   --size-orderbook-xl: 320px;
-  --size-row: 22px;               /* order-book row height  */
+  /* Order-book / trades row height. Raised from 22px: at 14px figures the old
+     row left almost no leading and the ladder read as a solid block. The cost
+     is real — a taller row shows fewer price levels in the same rail, so the
+     book scrolls sooner. */
+  --size-row: 26px; /* order-book row height  */
   --size-control-sm: 28px;
   --size-control-md: 36px;
-  --size-control-lg: 44px;        /* min touch target on mobile */
+  --size-control-lg: 44px; /* min touch target on mobile */
 }
 
 /* ============================================================================
@@ -361,10 +396,18 @@
    affordance that shows *which* level moved.
    ========================================================================== */
 @keyframes flash-buy {
-  0%   { background-color: var(--color-buy-muted-strong); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: var(--color-buy-muted-strong);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 @keyframes flash-sell {
-  0%   { background-color: var(--color-sell-muted-strong); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: var(--color-sell-muted-strong);
+  }
+  100% {
+    background-color: transparent;
+  }
 }

@@ -29,13 +29,14 @@ export const colorGroups: ColorGroup[] = [
   {
     id: "surfaces",
     title: "Surfaces",
-    note: "On a near-black ground, shadow barely registers — elevation reads through background lightness plus a hairline border. Note that surface-inset goes darker than its container, so inputs read as recessed wells rather than raised cards.",
+    note: "On a near-black ground, shadow barely registers — elevation reads through background lightness plus a hairline border. Inputs sit ABOVE the panel, not below: the first pass recessed them and they vanished into the page, which is also why every comparable terminal raises them. surface-inset is now reserved for things that genuinely are recessed — slider grooves, table headers, meter tracks.",
     tokens: [
       { varName: "color-surface-base", resolves: "neutral-950", usage: "App canvas", fill: 100 },
       { varName: "color-surface-raised", resolves: "neutral-900", usage: "Panels, cards, rails", fill: 82 },
+      { varName: "color-surface-input", resolves: "literal", usage: "Text fields — raised above the panel", fill: 70 },
       { varName: "color-surface-overlay", resolves: "neutral-850", usage: "Dropdowns, popovers", fill: 64 },
       { varName: "color-surface-modal", resolves: "neutral-800", usage: "Dialogs, bottom sheets", fill: 48 },
-      { varName: "color-surface-inset", resolves: "literal", usage: "Inputs, wells — recessed", fill: 36 },
+      { varName: "color-surface-inset", resolves: "literal", usage: "Slider grooves, table headers", fill: 36 },
       { varName: "color-surface-hover", resolves: "white 4%", usage: "Row and control hover", fill: 22 },
       { varName: "color-surface-active", resolves: "white 8%", usage: "Pressed state", fill: 16 },
       { varName: "color-surface-selected", resolves: "primary 12%", usage: "Active tab, chosen row", fill: 10 },
