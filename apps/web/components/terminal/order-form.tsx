@@ -276,15 +276,17 @@ export function OrderForm({
             ))}
           </dl>
 
-          <div className="flex gap-2">
+          {/* `*:flex-1` splits the row evenly. `fullWidth` (w-full) cannot be
+              used here: two w-full items in a flex row each claim 100% of the
+              container, so together they overflowed past the dialog edge. */}
+          <div className="flex gap-2 *:flex-1">
             <DialogClose asChild>
-              <Button intent="neutral" fullWidth>
+              <Button intent="neutral">
                 Cancel
               </Button>
             </DialogClose>
             <Button
               intent={side === "LONG" ? "buy" : "sell"}
-              fullWidth
               onClick={() => setConfirming(false)}
             >
               Confirm {side === "LONG" ? "buy" : "sell"}

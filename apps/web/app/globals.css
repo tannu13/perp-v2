@@ -9,6 +9,11 @@
     -webkit-text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Reserve the page scrollbar's width whether or not it is showing, so a
+       document that crosses the viewport height does not reflow everything
+       sideways the moment the scrollbar appears. Costs ~15px of width once,
+       permanently, instead of a layout shift every time content changes. */
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -87,7 +92,16 @@
     font-feature-settings: "tnum" 1;
   }
 
-  /* Thin scrollbars for dense panels (book, trades, tables). */
+  /**
+   * Fallback thin scrollbar.
+   *
+   * Superseded by the ScrollArea component, which is the default for any
+   * scrollable region — this only styles native scrollbars that ScrollArea does
+   * not own, such as a horizontally scrolling table inside one. It is two
+   * mutually exclusive vendor mechanisms (`scrollbar-*` for Gecko/Blink,
+   * `::-webkit-scrollbar` for WebKit), which is exactly why it could not be
+   * made consistent and why ScrollArea exists.
+   */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--color-neutral-700) transparent;

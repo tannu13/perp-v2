@@ -228,6 +228,21 @@ export const buildSteps: Step[] = [
   },
   {
     phase: "08",
+    title: "Overlays, scrolling and elevation",
+    status: "done",
+    body: "Radix took over the behaviour-heavy overlays, the terminal became a fixed viewport shell, and every section finally got an elevation. Driven by real feedback against the built screen rather than a checklist.",
+    detail: [
+      "Radix Dialog, Tabs, Tooltip and ScrollArea — used directly rather than via the shadcn CLI, which would have injected its own token vocabulary into globals.css",
+      "ScrollArea is now the default scroll region: its overlay scrollbar takes no layout width, so a native bar can no longer appear mid-stream and reflow the rows beneath it",
+      "Terminal is h-dvh + overflow-hidden at lg; min-height floors totalling ~622px were forcing a page scrollbar on short laptops",
+      "scrollbar-gutter: stable reserves the page scrollbar permanently",
+      "Every section is a raised panel on the base canvas, separated by an 8px seam — the market bar included, since full-bleed stopped aligning once the gutter was reserved",
+      "Order-book depth bars split into two nested tints: cumulative behind, the level's own size in front",
+      "Deposit dialog added, mapping to POST /order/onramp",
+    ],
+  },
+  {
+    phase: "09",
     title: "Layouts and patterns",
     status: "next",
     body: "OrderBook, TradesFeed, DataTable, OrderForm and the responsive terminal shell across all three targets.",
@@ -238,14 +253,14 @@ export const buildSteps: Step[] = [
 export const openQuestions: { title: string; body: string }[] = [
   {
     title: "No private websocket channel",
-    body: "The ws-server broadcasts public market data only, keyed by market. Fill notifications and order-status updates have no push path, so the UI has to poll REST after submitting an order. Either add a per-user channel server-side or accept optimistic UI plus reconciliation. This is the largest open item before Phase 3, because it decides whether the positions and orders tabs are push- or poll-driven.",
+    body: "The ws-server broadcasts public market data only, keyed by market. Fill notifications and order-status updates have no push path, so the UI would have to poll REST after submitting an order. A per-user channel is agreed but not built; Phase 3 onward assumes push, not polling. This is the largest open item before integration.",
   },
   {
-    title: "Depth-bar orientation is still hue-only",
-    body: "Delta and Side now carry direction without color, but the order book's own bid/ask fills do not — a green bar and a red bar differ only in hue. Bar growth direction (bids fill right-to-left, asks left-to-right) is the conventional non-chromatic cue and should be built into the OrderBook component in Phase 3 rather than added afterwards.",
+    title: "Account state is duplicated",
+    body: "A hardcoded balance of 2521 appears in the order ticket, the deposit dialog and the balances table. They will disagree the moment one changes. This wants lifting into shared account state, which belongs with the API client rather than being solved twice.",
   },
   {
-    title: "Tooltip cannot collide-detect",
-    body: "The CSS-only tooltip has no portal and no flip logic, which is the right trade for labelling terminal chrome well inside the viewport. Anything needing real placement — a chart crosshair readout, a nested menu — will need a positioning library. Worth deciding when the chart lands, not before.",
+    title: "Mobile is verified analytically, not visually",
+    body: "The layout has been checked for page-level overflow and min-width overruns by measuring the DOM, but never actually viewed at a phone width — window resizing is not available in this environment. Worth confirming in DevTools device mode before more layout work lands on top of it.",
   },
 ];

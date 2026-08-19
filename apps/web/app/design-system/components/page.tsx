@@ -14,6 +14,7 @@ import {
   Num,
   NumericInput,
   Radio,
+  ScrollArea,
   SearchInput,
   SegmentedControl,
   Select,
@@ -62,8 +63,8 @@ export default function ComponentsPage() {
       {/* ------------------------------------------------------- masthead -- */}
       <header className="mb-10 border-b border-border-subtle pt-14 pb-10">
         <div className="mb-4 flex flex-wrap items-center gap-2.5 font-mono text-micro uppercase text-text-tertiary">
-          <StatusDot intent="online" label="Phase 2 in progress" />
-          Perp v2 · Phase 2 · Base components
+          <StatusDot intent="online" label="Component library" />
+          Perp v2 · Component library
         </div>
         <h1 className="mb-3.5 text-balance text-display-md text-text-primary">
           Component library
@@ -180,6 +181,17 @@ export default function ComponentsPage() {
           </Row>
           <Row label="danger">
             <Button intent="danger" size="md">Close position</Button>
+            <span className="text-caption text-text-tertiary">
+              Committed destructive action — use inside a confirm dialog.
+            </span>
+          </Row>
+          <Row label="danger-ghost">
+            <Button intent="danger-ghost" size="sm">Cancel</Button>
+            <Button intent="danger-ghost" size="sm">Close</Button>
+            <span className="text-caption text-text-tertiary">
+              Row actions. Neutral at rest, red on hover — a table of solid red
+              buttons is alarm fatigue.
+            </span>
           </Row>
           <Row label="fullWidth">
             <div className="w-full max-w-sm">
@@ -191,7 +203,7 @@ export default function ComponentsPage() {
           <Row label="Icon buttons">
             <IconButton label="Add"><PlusIcon /></IconButton>
             <IconButton label="Search" intent="neutral"><SearchIcon /></IconButton>
-            <IconButton label="Close" intent="danger"><CloseIcon /></IconButton>
+            <IconButton label="Close" intent="danger-ghost"><CloseIcon /></IconButton>
             <IconButton label="Add small" size="sm"><PlusIcon /></IconButton>
             <IconButton label="Add large" size="lg"><PlusIcon /></IconButton>
             <IconButton label="Disabled" disabled><PlusIcon /></IconButton>
@@ -313,14 +325,24 @@ export default function ComponentsPage() {
       {/* ----------------------------------------------------- indicators -- */}
       <Section id="indicators" num="04" title="Indicators" note="badges · dots · avatars">
         <Panel>
-          <Row label="Badge">
-            <Badge>Neutral</Badge>
-            <Badge intent="buy">Filled</Badge>
-            <Badge intent="sell">Cancelled</Badge>
+          <Row label="Order status">
+            <Badge intent="neutral">Pending</Badge>
             <Badge intent="info">Open</Badge>
-            <Badge intent="warning">Partial</Badge>
+            <Badge intent="warning">Partially filled</Badge>
+            <Badge intent="outline">Filled</Badge>
+            <Badge intent="neutral">Cancelled</Badge>
+            <span className="text-caption text-text-tertiary">
+              Non-directional intents only.
+            </span>
+          </Row>
+          <Row label="Other badges">
             <Badge intent="danger">Liquidated</Badge>
             <Badge intent="outline">10x</Badge>
+            <Badge intent="buy">Long</Badge>
+            <Badge intent="sell">Short</Badge>
+            <span className="text-caption text-text-tertiary">
+              buy / sell are reserved for market direction — never for status.
+            </span>
           </Row>
           <Row label="Tag">
             <Tag label="SOL-USD" />
@@ -343,6 +365,22 @@ export default function ComponentsPage() {
             <Avatar name="Tanuj Pant" />
             <Avatar name="Satoshi" size="lg" intent="accent" />
             <Avatar name="Perp Bot" intent="interactive" />
+          </Row>
+          <Row label="Scroll area">
+            <ScrollArea className="h-24 w-56 rounded-md border border-border-subtle bg-surface-inset">
+              <div className="flex flex-col gap-1 p-2">
+                {Array.from({ length: 14 }, (_, i) => (
+                  <span key={i} className="text-num-sm tnum text-text-secondary">
+                    row {String(i + 1).padStart(2, "0")}
+                  </span>
+                ))}
+              </div>
+            </ScrollArea>
+            <span className="max-w-[34ch] text-caption text-text-tertiary">
+              The default for any scrollable region. Its scrollbar is an overlay
+              and takes no layout width, so content cannot reflow when it appears
+              — which is why raw overflow-y-auto is the exception here.
+            </span>
           </Row>
           <Row label="Tooltip">
             <Tooltip content="Initial margin required to open">

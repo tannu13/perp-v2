@@ -58,14 +58,18 @@ export const colorGroups: ColorGroup[] = [
   {
     id: "directional",
     title: "Directional",
-    note: "The most-repeated colors in the product. `buy` is the fill for solid controls; `buy-text` is the lighter step used for green type on dark ground, because the fill green fails contrast at 11px. The muted pair drives order-book depth bars.",
+    note: "The most-repeated colors in the product. `buy` is the fill for solid controls; `buy-text` is the lighter step used for green type on dark ground, because the fill green fails contrast at 11px. The depth pair is separate from `muted` because muted-strong is shared with the Buy/Sell segmented control — widening the gap there to separate the two book bars would have made the order ticket loud again.",
     tokens: [
       { varName: "color-buy", resolves: "long-500", usage: "Solid fill — buy button, bid bar", fill: 100 },
       { varName: "color-buy-text", resolves: "long-400", usage: "Green type on dark", fill: 80 },
-      { varName: "color-buy-muted", resolves: "long 12%", usage: "Depth-bar fill", fill: 60 },
+      { varName: "color-buy-muted", resolves: "long 14%", usage: "Generic tint", fill: 60 },
+      { varName: "color-buy-depth-total", resolves: "long 13%", usage: "Order book — cumulative depth, the rear bar", fill: 50 },
+      { varName: "color-buy-depth-level", resolves: "long 32%", usage: "Order book — this level's own size, front bar", fill: 40 },
       { varName: "color-sell", resolves: "short-500", usage: "Solid fill — sell button, ask bar", fill: 100 },
       { varName: "color-sell-text", resolves: "short-400", usage: "Red type on dark", fill: 80 },
-      { varName: "color-sell-muted", resolves: "short 12%", usage: "Depth-bar fill", fill: 60 },
+      { varName: "color-sell-muted", resolves: "short 14%", usage: "Generic tint", fill: 60 },
+      { varName: "color-sell-depth-total", resolves: "short 13%", usage: "Order book — cumulative depth, the rear bar", fill: 50 },
+      { varName: "color-sell-depth-level", resolves: "short 32%", usage: "Order book — this level's own size, front bar", fill: 40 },
     ],
   },
   {
@@ -142,8 +146,8 @@ export const typeScale: TypeToken[] = [
   { className: "text-micro", name: "micro", spec: "11 / 1.3 / 0.04em · 500", sample: "Price (USD) · Size (SOL) · Total", uppercase: true, tone: "text-text-tertiary" },
   { className: "text-num-xl", name: "num-xl", spec: "24 / 1.16 / −0.015em · 600", sample: "205.09", tabular: true, tone: "text-buy-text", note: "Header last price" },
   { className: "text-num-lg", name: "num-lg", spec: "20 / 1.2 / −0.01em · 600", sample: "18,485,368.61", tabular: true },
-  { className: "text-num-md", name: "num-md", spec: "13 / 1.38 / 0 · 500", sample: "204.96   245.09   289.14", tabular: true, note: "Book rows" },
-  { className: "text-num-sm", name: "num-sm", spec: "12 / 1.33 / 0 · 500", sample: "+4.96   +2.48%   00:25:50", tabular: true, tone: "text-text-secondary" },
+  { className: "text-num-md", name: "num-md", spec: "14 / 1.36 / 0 · 500", sample: "204.96   245.09   289.14", tabular: true, note: "Book rows. Coloured cells drop to 400" },
+  { className: "text-num-sm", name: "num-sm", spec: "13 / 1.33 / 0 · 500", sample: "+4.96   +2.48%   00:25:50", tabular: true, tone: "text-text-secondary" },
 ];
 
 export const spacingScale: { step: string; px: number }[] = [
@@ -166,7 +170,7 @@ export const layoutConstants: { token: string; value: string; applies: string }[
   { token: "--size-market-bar", value: "64px", applies: "Ticker / stats strip" },
   { token: "--size-order-form", value: "320px", applies: "Right rail at lg; 344px at xl" },
   { token: "--size-orderbook", value: "288px", applies: "Book column; 320px at xl" },
-  { token: "--size-row", value: "22px", applies: "Order-book row — sets book density" },
+  { token: "--size-row", value: "26px", applies: "Order-book / trades row — sets book density" },
   { token: "--size-control-md", value: "36px", applies: "Default input / button height" },
   { token: "--size-control-lg", value: "44px", applies: "Mobile minimum touch target" },
   { token: "--size-bottom-nav", value: "56px", applies: "Mobile tab bar only" },

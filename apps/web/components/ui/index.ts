@@ -16,6 +16,7 @@ export { IconButton, iconButtonVariants } from "./icon-button";
 export { Input, inputVariants, SearchInput, Textarea } from "./input";
 export { LeverageSlider } from "./leverage-slider";
 export { NumericInput } from "./numeric-input";
+export { ScrollArea } from "./scroll-area";
 export { Seam, SeamRule } from "./seam";
 export { SegmentedControl } from "./segmented-control";
 export { Select } from "./select";

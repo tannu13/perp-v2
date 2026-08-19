@@ -1,10 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatTime, formatUsd, truncateId } from "@/lib/format";
 import type { Market } from "@/lib/markets";
-import { Badge, Button, Delta, Num, Side } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Delta,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  Num,
+  ScrollArea,
+  Side,
+} from "@/components/ui";
 
 /**
  * The bottom panel: positions, open orders, fills, balances, order history.
@@ -18,32 +31,158 @@ import { Badge, Button, Delta, Num, Side } from "@/components/ui";
  * client landing.
  */
 
-const POSITIONS = [
-  { id: "1", market: "SOL-USD", side: "LONG" as const, size: "12.40", entry: "203.88", mark: "205.09", pnl: 15.0, roe: 3.68, margin: 252.8, liq: "182.44" },
-  { id: "2", market: "BTC-USD", side: "SHORT" as const, size: "0.0450", entry: "68910.0", mark: "68450.5", pnl: 20.68, roe: 6.67, margin: 310.1, liq: "72104.0" },
+/**
+ * Placeholder rows, generated rather than hand-written so the tables can be
+ * judged at realistic length. Deterministic (seeded LCG, fixed epoch) so every
+ * render and every reload produces identical data — random mock rows make it
+ * impossible to tell a layout regression from noise.
+ *
+ * Shapes match the drizzle schema. Swap these for the API client; nothing in
+ * the table markup below should need to change.
+ */
+const EPOCH = Date.UTC(2026, 7, 19, 12, 0, 0);
+
+function makeRng(seed: number) {
+  let s = seed;
+  const next = () => {
+    s = (s * 1103515245 + 12345) % 2147483648;
+    return s / 2147483648;
+  };
+  // Discard the first few draws. An LCG seeded with a small integer produces a
+  // first output in a narrow band, so with one generator per row every row got
+  // a near-identical opening value — which is why the entry price landed on the
+  // same side of the mark every time and all six positions shared a sign.
+  for (let i = 0; i < 8; i++) next();
+  return next;
+}
+
+/** `maxSize` is per instrument — 14 BTC and 14 SOL are wildly different trades. */
+const INSTRUMENTS = [
+  { market: "SOL-USD", px: 77.5, dp: 2, sp: 2, maxSize: 40 },
+  { market: "BTC-USD", px: 68450, dp: 1, sp: 4, maxSize: 0.35 },
+  { market: "ETH-USD", px: 1896, dp: 2, sp: 3, maxSize: 4 },
 ];
 
-const OPEN_ORDERS = [
-  { id: "a1b2c3d4-0000-0000-0000-000000000001", side: "LONG" as const, type: "limit", price: "204.96", qty: "4.74", filled: "0.00", status: "open" as const, ts: Date.now() - 420000 },
-  { id: "a1b2c3d4-0000-0000-0000-000000000002", side: "SHORT" as const, type: "limit", price: "206.50", qty: "2.00", filled: "0.85", status: "partially_filled" as const, ts: Date.now() - 90000 },
-];
+const POSITIONS = Array.from({ length: 6 }, (_, i) => {
+  const r = makeRng(i + 11);
+  const inst = INSTRUMENTS[i % INSTRUMENTS.length]!;
+  // Side alternates rather than following the same RNG stream as `entry`.
+  // Drawing both from consecutive values happened to correlate them and made
+  // every one of the six positions a winner, so the losing/red path in the PnL
+  // column was never rendered.
+  const long = i % 2 === 0;
+  const dir = long ? 1 : -1;
+  const entry = inst.px * (1 + (r() - 0.5) * 0.06);
+  const size = r() * inst.maxSize + inst.maxSize * 0.05;
+  const leverage = [2, 3, 5, 10][i % 4]!;
 
-const FILLS = [
-  { id: "f1", side: "LONG" as const, price: "204.11", qty: "3.20", fee: "0.33", role: "taker", ts: Date.now() - 60000 },
-  { id: "f2", side: "LONG" as const, price: "203.88", qty: "9.20", fee: "0.94", role: "maker", ts: Date.now() - 180000 },
-  { id: "f3", side: "SHORT" as const, price: "68910.00", qty: "0.0450", fee: "1.24", role: "taker", ts: Date.now() - 900000 },
-];
+  // Derived, not invented: PnL follows from size and the entry/mark spread, and
+  // margin follows from notional and leverage. An earlier version generated
+  // these independently and produced a 13 BTC position on $924 margin at +774%.
+  const pnl = (inst.px - entry) * size * dir;
+  const margin = (entry * size) / leverage;
+
+  return {
+    id: `p${i}`,
+    market: inst.market,
+    side: (long ? "LONG" : "SHORT") as "LONG" | "SHORT",
+    size: size.toFixed(inst.sp),
+    entry: entry.toFixed(inst.dp),
+    mark: inst.px.toFixed(inst.dp),
+    pnl: Number(pnl.toFixed(2)),
+    roe: Number(((pnl / margin) * 100).toFixed(2)),
+    margin: Number(margin.toFixed(2)),
+    leverage,
+    // Liquidation sits roughly one margin-width against the position.
+    liq: (entry * (1 - dir / leverage)).toFixed(inst.dp),
+  };
+});
+
+const ORDER_STATUSES = ["open", "partially_filled"] as const;
+
+const OPEN_ORDERS = Array.from({ length: 14 }, (_, i) => {
+  const r = makeRng(i + 101);
+  const inst = INSTRUMENTS[i % INSTRUMENTS.length]!;
+  const qty = r() * inst.maxSize + inst.maxSize * 0.05;
+  const status = ORDER_STATUSES[i % 2]!;
+  return {
+    id: `a1b2c3d4-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+    market: inst.market,
+    side: (r() > 0.5 ? "LONG" : "SHORT") as "LONG" | "SHORT",
+    type: r() > 0.75 ? "market" : "limit",
+    price: (inst.px * (1 + (r() - 0.5) * 0.04)).toFixed(inst.dp),
+    qty: qty.toFixed(inst.sp),
+    filled: (status === "partially_filled" ? qty * r() : 0).toFixed(inst.sp),
+    status,
+    ts: EPOCH - i * 137_000,
+  };
+});
+
+const FILLS = Array.from({ length: 30 }, (_, i) => {
+  const r = makeRng(i + 211);
+  const inst = INSTRUMENTS[i % INSTRUMENTS.length]!;
+  const qty = r() * inst.maxSize * 0.6 + inst.maxSize * 0.02;
+  const px = inst.px * (1 + (r() - 0.5) * 0.03);
+  return {
+    id: `f${i}`,
+    market: inst.market,
+    side: (r() > 0.5 ? "LONG" : "SHORT") as "LONG" | "SHORT",
+    price: px.toFixed(inst.dp),
+    qty: qty.toFixed(inst.sp),
+    fee: (px * qty * 0.0004).toFixed(2),
+    role: r() > 0.55 ? "maker" : "taker",
+    ts: EPOCH - i * 61_000,
+  };
+});
+
+const HISTORY_STATUSES = ["filled", "cancelled"] as const;
+
+const ORDER_HISTORY = Array.from({ length: 24 }, (_, i) => {
+  const r = makeRng(i + 307);
+  const inst = INSTRUMENTS[i % INSTRUMENTS.length]!;
+  const qty = r() * inst.maxSize * 0.8 + inst.maxSize * 0.03;
+  const status = HISTORY_STATUSES[i % 3 === 0 ? 1 : 0]!;
+  return {
+    id: `b7c8d9e0-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+    market: inst.market,
+    side: (r() > 0.5 ? "LONG" : "SHORT") as "LONG" | "SHORT",
+    type: r() > 0.7 ? "market" : "limit",
+    price: (inst.px * (1 + (r() - 0.5) * 0.05)).toFixed(inst.dp),
+    qty: qty.toFixed(inst.sp),
+    filled: (status === "filled" ? qty : qty * 0.3).toFixed(inst.sp),
+    status,
+    ts: EPOCH - i * 940_000,
+  };
+});
 
 const BALANCES = [
   { asset: "USD", total: "2521.00", available: "1958.10", inOrders: "562.90" },
+  { asset: "USDC", total: "12480.55", available: "12480.55", inOrders: "0.00" },
+  { asset: "SOL", total: "146.2040", available: "121.9800", inOrders: "24.2240" },
+  { asset: "BTC", total: "0.4512", available: "0.4062", inOrders: "0.0450" },
+  { asset: "ETH", total: "8.7310", available: "6.4210", inOrders: "2.3100" },
+  { asset: "JUP", total: "18420.00", available: "18420.00", inOrders: "0.00" },
+  { asset: "PYTH", total: "9310.75", available: "8110.75", inOrders: "1200.00" },
 ];
 
+/**
+ * Order status → badge intent.
+ *
+ * NON-DIRECTIONAL INTENTS ONLY. `buy` and `sell` are reserved for market
+ * direction, and the Side column sits three cells from Status — a green FILLED
+ * badge landing beside a green LONG badge is exactly the ambiguity the
+ * green-means-long rule exists to prevent. `filled` was green here and this is
+ * the fix.
+ *
+ * filled and cancelled are both terminal and both quiet; `outline` vs `neutral`
+ * separates them without either shouting.
+ */
 const STATUS_INTENT = {
+  pending: "neutral",
   open: "info",
   partially_filled: "warning",
-  filled: "buy",
+  filled: "outline",
   cancelled: "neutral",
-  pending: "neutral",
 } as const;
 
 function Table({
@@ -99,11 +238,73 @@ function Td({
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
+/**
+ * Close is the one row action that confirms. It submits a market order at
+ * whatever the book offers, crystallising an unrealised PnL into a real one —
+ * there is no undo, and the number the user sees is not the number they get.
+ */
+function ClosePositionButton({
+  position,
+}: {
+  position: (typeof POSITIONS)[number];
+}) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <p className="px-3 py-10 text-center text-body-sm text-text-tertiary">
-      {children}
-    </p>
+    <>
+      <Button intent="danger-ghost" size="sm" onClick={() => setOpen(true)}>
+        Close
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogTitle>Close {position.market} position?</DialogTitle>
+          <DialogDescription>
+            This submits a market order for the full size. The fill price
+            depends on the book and will not exactly match the mark shown here.
+          </DialogDescription>
+
+          <dl className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-inset p-3 text-body-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-tertiary">Position</dt>
+              <dd className="flex items-center gap-2">
+                <Side side={position.side} size="sm" />
+                <span className="text-num-md tnum text-text-primary">
+                  {position.size}
+                </span>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-tertiary">Mark</dt>
+              <dd className="text-num-md tnum text-text-primary">
+                {position.mark}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-tertiary">Unrealised PnL</dt>
+              <dd>
+                <Delta value={position.pnl} unit="USD" size="sm" />
+              </dd>
+            </div>
+          </dl>
+
+          {/* `*:flex-1` splits the row evenly. `fullWidth` (w-full) cannot be
+              used here: two w-full items in a flex row each claim 100% of the
+              container, so together they overflowed past the dialog edge. */}
+          <div className="flex gap-2 *:flex-1">
+            <DialogClose asChild>
+              <Button intent="neutral">
+                Keep position
+              </Button>
+            </DialogClose>
+            {/* Solid danger here — the action is committed at this point. */}
+            <Button intent="danger" onClick={() => setOpen(false)}>
+              Close position
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -150,7 +351,7 @@ export function AccountTabs({
         ))}
       </TabsPrimitive.List>
 
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1">
         <TabsPrimitive.Content value="positions">
           <Table head={["Market", "Size", "Entry", "Mark", "Liq. price", "Margin", "PnL", ""]}>
             {POSITIONS.map((p) => (
@@ -165,7 +366,14 @@ export function AccountTabs({
                 <Td>{p.entry}</Td>
                 <Td>{p.mark}</Td>
                 <Td className="text-warning">{p.liq}</Td>
-                <Td>{formatUsd(p.margin)}</Td>
+                <Td>
+                  <span className="flex items-center justify-end gap-1.5">
+                    {formatUsd(p.margin)}
+                    <Badge intent="outline" size="sm">
+                      {p.leverage}x
+                    </Badge>
+                  </span>
+                </Td>
                 <Td>
                   <span className="flex flex-col items-end">
                     <Delta value={p.pnl} unit="USD" size="sm" />
@@ -173,9 +381,9 @@ export function AccountTabs({
                   </span>
                 </Td>
                 <Td>
-                  <Button intent="ghost" size="sm">
-                    Close
-                  </Button>
+                  {/* Closing fires a market order and realises PnL — it is not
+                      reversible, so it confirms. Cancel below does not. */}
+                  <ClosePositionButton position={p} />
                 </Td>
               </tr>
             ))}
@@ -183,7 +391,7 @@ export function AccountTabs({
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="orders">
-          <Table head={["Order", "Side", "Type", "Price", "Qty", "Filled", "Status", ""]}>
+          <Table head={["Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status", ""]}>
             {OPEN_ORDERS.map((o) => (
               <tr key={o.id} className="hover:bg-surface-hover">
                 <Td first>
@@ -191,6 +399,7 @@ export function AccountTabs({
                     {truncateId(o.id)}
                   </span>
                 </Td>
+                <Td className="text-text-primary">{o.market}</Td>
                 <Td>
                   <Side side={o.side} size="sm" />
                 </Td>
@@ -204,7 +413,7 @@ export function AccountTabs({
                   </Badge>
                 </Td>
                 <Td>
-                  <Button intent="ghost" size="sm">
+                  <Button intent="danger-ghost" size="sm">
                     Cancel
                   </Button>
                 </Td>
@@ -214,12 +423,13 @@ export function AccountTabs({
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="fills">
-          <Table head={["Time", "Side", "Price", "Qty", "Role", "Fee"]}>
+          <Table head={["Time", "Market", "Side", "Price", "Qty", "Role", "Fee"]}>
             {FILLS.map((f) => (
               <tr key={f.id} className="hover:bg-surface-hover">
                 <Td first className="text-text-tertiary">
                   {formatTime(f.ts)}
                 </Td>
+                <Td className="text-text-primary">{f.market}</Td>
                 <Td>
                   <Side side={f.side} size="sm" />
                 </Td>
@@ -250,11 +460,35 @@ export function AccountTabs({
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="history">
-          <Empty>
-            No completed orders yet. Filled and cancelled orders appear here.
-          </Empty>
+          <Table head={["Time", "Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status"]}>
+            {ORDER_HISTORY.map((o) => (
+              <tr key={o.id} className="hover:bg-surface-hover">
+                <Td first className="text-text-tertiary">
+                  {formatTime(o.ts)}
+                </Td>
+                <Td>
+                  <span className="font-mono text-text-tertiary">
+                    {truncateId(o.id)}
+                  </span>
+                </Td>
+                <Td className="text-text-primary">{o.market}</Td>
+                <Td>
+                  <Side side={o.side} size="sm" />
+                </Td>
+                <Td className="text-text-secondary">{o.type}</Td>
+                <Td>{o.price}</Td>
+                <Td>{o.qty}</Td>
+                <Td className="text-text-secondary">{o.filled}</Td>
+                <Td>
+                  <Badge intent={STATUS_INTENT[o.status]} size="sm">
+                    {o.status}
+                  </Badge>
+                </Td>
+              </tr>
+            ))}
+          </Table>
         </TabsPrimitive.Content>
-      </div>
+      </ScrollArea>
     </TabsPrimitive.Root>
   );
 }

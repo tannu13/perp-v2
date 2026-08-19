@@ -52,10 +52,27 @@ export const buttonVariants = cva(
           "hover:bg-surface-hover hover:text-text-primary active:bg-surface-active",
           "disabled:text-text-disabled",
         ],
+        /** Solid. For a committed destructive action — the confirm inside a dialog. */
         danger: [
           "bg-danger text-white",
           "hover:bg-danger-400 active:bg-danger-600",
           "disabled:bg-surface-disabled disabled:text-text-disabled",
+        ],
+        /**
+         * Quiet destructive, for row actions.
+         *
+         * A table of twenty solid-red buttons is alarm fatigue, and cancelling a
+         * resting order is routine — no money moves. This stays neutral at rest
+         * and only turns red on hover/focus, so the consequence is signalled at
+         * the moment of intent rather than shouted continuously.
+         * Matches IconButton's `danger`, which was already this weight.
+         */
+        "danger-ghost": [
+          "bg-transparent text-text-tertiary",
+          "hover:bg-danger-muted hover:text-danger-400",
+          "active:bg-danger-muted active:text-danger",
+          "focus-visible:text-danger-400",
+          "disabled:text-text-disabled",
         ],
       },
       size: {

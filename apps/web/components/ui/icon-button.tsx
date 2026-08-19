@@ -16,8 +16,13 @@ export const iconButtonVariants = cva(
           "bg-transparent text-text-tertiary hover:bg-surface-hover hover:text-text-primary active:bg-surface-active",
         neutral:
           "border border-border-strong bg-surface-raised text-text-secondary hover:bg-surface-hover hover:text-text-primary active:bg-surface-active",
-        danger:
-          "bg-transparent text-text-tertiary hover:bg-danger-muted hover:text-danger active:bg-danger-muted",
+        /**
+         * Named to match Button: `danger-ghost` is the quiet weight on both.
+         * IconButton has no solid `danger` — an icon-only control carrying a
+         * committed destructive action has no room to say what it destroys.
+         */
+        "danger-ghost":
+          "bg-transparent text-text-tertiary hover:bg-danger-muted hover:text-danger-400 active:bg-danger-muted active:text-danger",
       },
       size: {
         sm: "size-7 [&_svg]:size-3.5",

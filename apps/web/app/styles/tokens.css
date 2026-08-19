@@ -153,8 +153,17 @@
   --color-buy-text: var(--color-long-400); /* green on dark bg    */
   /* Depth-bar and selected-state fills. Pulled down with the ramps — at 24%
      the active buy/sell segment was one of the loudest things on screen. */
-  --color-buy-muted: rgb(0 172 106 / 0.14); /* depth-bar fill      */
+  --color-buy-muted: rgb(0 172 106 / 0.14); /* generic tint        */
   --color-buy-muted-strong: rgb(0 172 106 / 0.22);
+  /* Order-book depth bars.
+     Two tints on one scale: `total` is cumulative liquidity at this price and
+     everything better, `level` is the price level's own resting size drawn on
+     top of it. They need a wider gap than muted/muted-strong to read as two
+     distinct bars, and they are separate tokens because muted-strong is shared
+     with the Buy/Sell segmented control — widening that would make the order
+     ticket loud again. */
+  --color-buy-depth-total: rgb(0 172 106 / 0.13);
+  --color-buy-depth-level: rgb(0 172 106 / 0.32);
 
   --color-sell: var(--color-short-500);
   --color-sell-hover: var(--color-short-400);
@@ -162,6 +171,8 @@
   --color-sell-text: var(--color-short-400);
   --color-sell-muted: rgb(216 87 98 / 0.14);
   --color-sell-muted-strong: rgb(216 87 98 / 0.22);
+  --color-sell-depth-total: rgb(216 87 98 / 0.13);
+  --color-sell-depth-level: rgb(216 87 98 / 0.32);
 
   /* --- Interactive ---------------------------------------------------------- */
   --color-interactive: var(--color-primary-500);

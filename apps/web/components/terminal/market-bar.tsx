@@ -7,6 +7,7 @@ import { formatCompact, formatCountdown, formatNumber } from "@/lib/format";
 import { MARKETS, type Market } from "@/lib/markets";
 import type { FeedState } from "@/lib/market-feed";
 import { Badge, Delta, StatusDot, Tooltip } from "@/components/ui";
+import { DepositDialog } from "./deposit-dialog";
 
 function Stat({
   label,
@@ -70,8 +71,13 @@ export function MarketBar({
 
   return (
     <div
+      // Surface and border now come from the caller's PANEL treatment: the bar
+      // is a panel like every other section, not full-bleed chrome. Full-bleed
+      // stopped working once the page reserved a scrollbar gutter — the bar ran
+      // under it while every panel below stopped short, so its right edge
+      // looked misaligned.
       className={cn(
-        "scrollbar-thin flex items-center gap-5 overflow-x-auto border-b border-border-subtle bg-surface-raised px-3 py-2.5",
+        "scrollbar-thin flex shrink-0 items-center gap-5 overflow-x-auto px-3 py-2.5",
         className,
       )}
     >
@@ -142,25 +148,31 @@ export function MarketBar({
         {formatCountdown(funding)}
       </Stat>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
-        <StatusDot
-          intent={feed.source === "live" ? "online" : feed.source === "simulated" ? "warning" : "offline"}
-          pulse={feed.source === "live"}
-          label={
-            feed.source === "live"
-              ? "Live feed connected"
+      <div className="ml-auto flex shrink-0 items-center gap-3 pl-2">
+        <div className="flex items-center gap-1.5">
+          <StatusDot
+            intent={feed.source === "live" ? "online" : feed.source === "simulated" ? "warning" : "offline"}
+            pulse={feed.source === "live"}
+            label={
+              feed.source === "live"
+                ? "Live feed connected"
+                : feed.source === "simulated"
+                  ? "Simulated feed — backend not connected"
+                  : "Connecting"
+            }
+          />
+          <span className="text-micro whitespace-nowrap text-text-tertiary">
+            {feed.source === "live"
+              ? "live"
               : feed.source === "simulated"
-                ? "Simulated feed — backend not connected"
-                : "Connecting"
-          }
-        />
-        <span className="text-micro whitespace-nowrap text-text-tertiary">
-          {feed.source === "live"
-            ? "live"
-            : feed.source === "simulated"
-              ? "simulated"
-              : "connecting"}
-        </span>
+                ? "simulated"
+                : "connecting"}
+          </span>
+        </div>
+
+        {/* Account-level, not market-level — it belongs in the global header
+            once that exists. The market bar is the only top chrome for now. */}
+        <DepositDialog />
       </div>
     </div>
   );

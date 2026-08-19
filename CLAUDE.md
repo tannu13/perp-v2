@@ -61,6 +61,16 @@ Read these before writing any UI. The living reference is the app itself:
   non-chromatic cue too (sign, label, or bar orientation).
 - `--color-buy` is for fills; `--color-buy-text` is the lighter step for green
   type on dark, which the fill green fails contrast for at 11px.
+- **Never use `buy` / `sell` intents for anything that isn't market direction.**
+  Order status, sync state, validation and success/failure all take
+  non-directional intents (`neutral`, `info`, `warning`, `danger`, `outline`).
+  A green FILLED badge next to a green LONG badge is unreadable, and
+  `--color-success` aliases the long green, so the token layer will not stop
+  you — this is the only guard.
+- Destructive row actions use `danger-ghost` (neutral at rest, red on hover) on
+  both Button and IconButton. Solid `danger` is for the committed action inside
+  a confirm dialog. Actions that realise money — closing a position — confirm;
+  cancelling a resting order does not.
 
 ### The signature — `Seam`
 
@@ -76,6 +86,22 @@ IBM Plex Sans + IBM Plex Mono, chosen as a superfamily because mono and sans sit
 adjacent inside the same table row and must stay optically aligned. Plex Sans has
 tabular digits by default; `.tnum` remains a safety net. Mono is restricted to
 order ids, hashes and API keys, and carries a slashed zero.
+
+### Scrolling
+
+- **`ScrollArea` is the default for any scrollable region.** Raw
+  `overflow-y-auto` is the exception, not the norm. Radix renders an overlay
+  scrollbar that takes no layout width, so content cannot reflow when it appears
+  — a native scrollbar showing up mid-stream narrows the content box and shifts
+  every row under it.
+- `.scrollbar-thin` survives only for native scrollbars ScrollArea does not own,
+  such as a horizontally scrolling table nested inside one.
+- **The terminal is a fixed viewport shell at `lg`+** (`h-dvh overflow-hidden`).
+  Nothing may overflow the window; all scrolling happens inside a panel. Avoid
+  hard `min-h-*` floors on desktop panels — they were what pushed short laptops
+  into a page scrollbar in the first place. Mobile keeps normal page scroll.
+- `scrollbar-gutter: stable` is set on `html` so the page scrollbar never causes
+  a layout shift.
 
 ### Third-party components
 

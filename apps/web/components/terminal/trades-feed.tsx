@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber, formatTime } from "@/lib/format";
 import type { Trade } from "@/lib/market-feed";
 import type { Market } from "@/lib/markets";
+import { ScrollArea } from "@/components/ui";
 
 /**
  * Recent prints. Direction is carried by an explicit ▲/▼ glyph as well as
@@ -26,7 +27,9 @@ export function TradesFeed({
         <span className="flex-1 text-right">Time</span>
       </div>
 
-      <div className="scrollbar-thin flex-1 overflow-y-auto">
+      {/* Overlay scrollbar: a native one appearing as prints stream in would
+          narrow the content box and reflow every row beneath it. */}
+      <ScrollArea className="min-h-0 flex-1">
         {trades.length === 0 ? (
           <p className="px-2 py-6 text-center text-caption text-text-tertiary">
             Waiting for prints.
@@ -61,7 +64,7 @@ export function TradesFeed({
             </div>
           ))
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

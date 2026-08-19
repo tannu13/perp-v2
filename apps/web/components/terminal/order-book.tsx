@@ -48,28 +48,51 @@ function LevelRow({
   market: Market;
   onClick: (price: number) => void;
 }) {
-  const pct = max > 0 ? (row.total / max) * 100 : 0;
+  // Two bars on ONE shared scale — the cumulative maximum.
+  //
+  //   depthPct  cumulative liquidity at this price and everything better than
+  //             it. This is what makes the ladder step monotonically.
+  //   levelPct  this price level's own resting size — its contribution to the
+  //             cumulative bar sitting behind it.
+  //
+  // Because total is a running sum, size <= total at every level, so the bright
+  // bar always nests inside the dark one. No clamping required.
+  const depthPct = max > 0 ? (row.total / max) * 100 : 0;
+  const levelPct = max > 0 ? (row.qty / max) * 100 : 0;
+
+  const isAsk = side === "ask";
 
   return (
     <button
       type="button"
       onClick={() => onClick(row.price)}
-      title={`Set price to ${row.price}`}
+      title={`Set price to ${row.price} · ${row.qty} at this level, ${row.total} cumulative`}
       className={cn(
         "relative flex h-(--size-row) w-full items-center px-2 text-num-md tnum",
         "transition-colors duration-instant hover:bg-surface-hover",
         "focus-visible:outline-none focus-visible:shadow-focus",
       )}
     >
-      {/* Depth bar. Orientation is the greyscale-safe direction cue: asks grow
-          leftward from the right edge, bids grow rightward from the left. */}
+      {/* Cumulative depth — the dark, longer bar.
+          Orientation is the greyscale-safe direction cue: asks grow leftward
+          from the right edge, bids grow rightward from the left. */}
       <span
         aria-hidden
         className={cn(
           "absolute inset-y-px",
-          side === "ask" ? "right-0 bg-sell-muted" : "left-0 bg-buy-muted",
+          isAsk ? "right-0 bg-sell-depth-total" : "left-0 bg-buy-depth-total",
         )}
-        style={{ width: `${pct}%` }}
+        style={{ width: `${depthPct}%` }}
+      />
+      {/* This level alone — brighter, drawn on top, anchored to the same edge so
+          it reads as the leading segment of the bar behind it. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-px",
+          isAsk ? "right-0 bg-sell-depth-level" : "left-0 bg-buy-depth-level",
+        )}
+        style={{ width: `${levelPct}%` }}
       />
       {/* Price drops to 400 while the neutral columns stay at 500. Colour is
           already carrying this cell, so weight on top of it made the ladder

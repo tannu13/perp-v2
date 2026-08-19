@@ -118,7 +118,7 @@ export default function DesignSystemPage() {
       {/* -------------------------------------------------------- rail --- */}
       <nav
         aria-label="Sections"
-        className="hidden self-start lg:sticky lg:top-8 lg:block lg:max-h-[calc(100dvh-4rem)] lg:overflow-y-auto lg:scrollbar-thin"
+        className="hidden self-start lg:sticky lg:top-8 lg:block lg:max-h-[calc(100dvh-4rem)] lg:overflow-y-auto"
       >
         <div className="pb-3 pl-3 font-mono text-[10px] uppercase tracking-[0.14em] text-text-disabled">
           Contents
