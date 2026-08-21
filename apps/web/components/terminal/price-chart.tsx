@@ -17,7 +17,7 @@ import {
   type Interval,
 } from "@/lib/candles";
 import type { Market } from "@/lib/markets";
-import { SegmentedControl } from "@/components/ui";
+import { SegmentedControl, Skeleton, SkeletonRegion } from "@/components/ui";
 
 /**
  * Candles + volume.
@@ -172,8 +172,45 @@ export function PriceChart({
               : "loading…"}
         </span>
       </div>
-      <div ref={holder} className="min-h-0 flex-1" />
+      <div className="relative min-h-0 flex-1">
+        {/* The chart library owns this node, so the skeleton overlays it rather
+            than replacing it — swapping the element out would tear down the
+            chart instance on every interval change. */}
+        <div ref={holder} className="h-full" />
+        {source === "loading" && <ChartSkeleton />}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Candle-shaped placeholder.
+ *
+ * A plain grey rectangle would read as a broken chart. Bars of varying height
+ * say "a price series is coming" — which is the only thing a skeleton is for.
+ * Heights are a fixed sequence, not random: random would differ between the
+ * server and client renders and trip a hydration mismatch.
+ */
+const CANDLE_HEIGHTS = [
+  38, 52, 46, 61, 55, 70, 64, 58, 72, 66, 79, 71, 63, 75, 68, 82, 74, 60, 55,
+  67, 59, 71, 64, 78,
+];
+
+function ChartSkeleton() {
+  return (
+    <SkeletonRegion
+      label="Loading price chart"
+      className="absolute inset-0 flex items-end gap-1 px-2 pb-6"
+    >
+      {CANDLE_HEIGHTS.map((h, i) => (
+        <Skeleton
+          key={i}
+          shape="text"
+          className="min-w-1 flex-1"
+          style={{ height: `${h}%` }}
+        />
+      ))}
+    </SkeletonRegion>
   );
 }
 

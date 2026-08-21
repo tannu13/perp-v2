@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from "@/components/ui";
 import { LeverageSlider } from "@/components/ui/leverage-slider";
+import { useFillToast } from "./fill-toast";
 
 /**
  * Order ticket.
@@ -50,6 +51,8 @@ export function OrderForm({
   const [postOnly, setPostOnly] = useState(false);
   const [reduceOnly, setReduceOnly] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const fillToast = useFillToast();
 
   const effectivePrice =
     orderType === "limit" ? Number.parseFloat(price) || 0 : (lastPrice ?? 0);
@@ -66,6 +69,31 @@ export function OrderForm({
   }, [quantity, margin, balance, orderType, effectivePrice]);
 
   const canSubmit = quantity > 0 && !error && effectivePrice > 0;
+
+  /**
+   * TODO(api): POST /order with the CreateOrderSchema payload, then let the
+   * private ws-server channel deliver the fill. The decision on record is that
+   * fills are PUSHED, not polled — so the real version fires no toast here; it
+   * subscribes, and the toast comes from the socket. This local call stands in
+   * for that push so the confirmation path is built and reviewable now.
+   */
+  const submitOrder = async () => {
+    setSubmitting(true);
+    await new Promise((r) => setTimeout(r, 450));
+    setSubmitting(false);
+    setConfirming(false);
+
+    fillToast({
+      orderId: `${market.slug.toLowerCase()}-${Date.now().toString(16)}`,
+      side,
+      // A limit order rests; only a market order is filled on submission.
+      status: orderType === "market" ? "filled" : "partial",
+      qty,
+      price: effectivePrice.toFixed(market.priceDecimals),
+      market,
+    });
+    setQty("");
+  };
 
   /** Sets size from a percentage of available margin at current leverage. */
   const setPct = (pct: number) => {
@@ -285,9 +313,16 @@ export function OrderForm({
                 Cancel
               </Button>
             </DialogClose>
+            {/* Re-checks `canSubmit` rather than trusting that the dialog could
+                only have been opened while it was true. The ticket stays live
+                behind the dialog — a market order's price tracks the feed — so
+                the guard belongs at the point of submission, not only at the
+                point the dialog opened. */}
             <Button
               intent={side === "LONG" ? "buy" : "sell"}
-              onClick={() => setConfirming(false)}
+              disabled={!canSubmit}
+              loading={submitting}
+              onClick={submitOrder}
             >
               Confirm {side === "LONG" ? "buy" : "sell"}
             </Button>

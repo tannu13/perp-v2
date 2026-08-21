@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatTime, formatUsd, truncateId } from "@/lib/format";
@@ -14,10 +14,17 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
+  EmptyState,
+  LayersIcon,
+  ListIcon,
   Num,
   ScrollArea,
   Side,
+  SkeletonRegion,
+  SkeletonTable,
+  WalletIcon,
 } from "@/components/ui";
+import { DepositButton } from "./deposit-dialog";
 
 /**
  * The bottom panel: positions, open orders, fills, balances, order history.
@@ -239,6 +246,72 @@ function Td({
 }
 
 /**
+ * First-load gate for the account tables.
+ *
+ * TODO(api): replace with the real request state once the API client lands —
+ * this exists so the skeleton path is on screen every load rather than being
+ * code that only runs in a story. The rows themselves are still the seeded
+ * generators above.
+ *
+ * It starts `true` on the server and on the first client render, so the two
+ * trees match and there is no hydration mismatch.
+ */
+function useFirstLoad(ms = 700) {
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const id = window.setTimeout(() => setLoading(false), ms);
+    return () => window.clearTimeout(id);
+  }, [ms]);
+  return loading;
+}
+
+/**
+ * One tab body, with the three states every table here has to handle.
+ *
+ * Centralised rather than repeated five times because the ordering matters and
+ * is easy to get subtly wrong: loading must be checked BEFORE empty, or an
+ * account with no positions flashes "No open positions" on every page load
+ * before its data arrives — telling the user something false about their money.
+ */
+function TabPanel({
+  value,
+  loading,
+  head,
+  isEmpty,
+  empty,
+  children,
+}: {
+  value: string;
+  loading: boolean;
+  head: string[];
+  isEmpty: boolean;
+  empty: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <TabsPrimitive.Content value={value}>
+      {loading ? (
+        <SkeletonRegion label={`Loading ${value}`}>
+          {/* Same wrapper and same min-width as the real Table, so the columns
+              resolve identically and nothing shifts when the rows arrive. */}
+          <div className="scrollbar-thin overflow-x-auto">
+            <SkeletonTable
+              columns={head.filter(Boolean)}
+              rows={5}
+              className="min-w-[640px]"
+            />
+          </div>
+        </SkeletonRegion>
+      ) : isEmpty ? (
+        empty
+      ) : (
+        <Table head={head}>{children}</Table>
+      )}
+    </TabsPrimitive.Content>
+  );
+}
+
+/**
  * Close is the one row action that confirms. It submits a market order at
  * whatever the book offers, crystallising an unrealised PnL into a real one —
  * there is no undo, and the number the user sees is not the number they get.
@@ -323,6 +396,8 @@ export function AccountTabs({
   market: Market;
   className?: string;
 }) {
+  const loading = useFirstLoad();
+
   return (
     <TabsPrimitive.Root
       defaultValue="positions"
@@ -352,9 +427,20 @@ export function AccountTabs({
       </TabsPrimitive.List>
 
       <ScrollArea className="min-h-0 flex-1">
-        <TabsPrimitive.Content value="positions">
-          <Table head={["Market", "Size", "Entry", "Mark", "Liq. price", "Margin", "PnL", ""]}>
-            {POSITIONS.map((p) => (
+        <TabPanel
+          value="positions"
+          loading={loading}
+          head={["Market", "Size", "Entry", "Mark", "Liq. price", "Margin", "PnL", ""]}
+          isEmpty={POSITIONS.length === 0}
+          empty={
+            <EmptyState
+              icon={LayersIcon}
+              title="No open positions"
+              description="A position opens here as soon as one of your orders fills."
+            />
+          }
+        >
+          {POSITIONS.map((p) => (
               <tr key={p.id} className="hover:bg-surface-hover">
                 <Td first>
                   <span className="flex items-center gap-2">
@@ -387,12 +473,22 @@ export function AccountTabs({
                 </Td>
               </tr>
             ))}
-          </Table>
-        </TabsPrimitive.Content>
+        </TabPanel>
 
-        <TabsPrimitive.Content value="orders">
-          <Table head={["Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status", ""]}>
-            {OPEN_ORDERS.map((o) => (
+        <TabPanel
+          value="orders"
+          loading={loading}
+          head={["Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status", ""]}
+          isEmpty={OPEN_ORDERS.length === 0}
+          empty={
+            <EmptyState
+              icon={ListIcon}
+              title="No open orders"
+              description="Resting limit orders stay here until they fill or you cancel them."
+            />
+          }
+        >
+          {OPEN_ORDERS.map((o) => (
               <tr key={o.id} className="hover:bg-surface-hover">
                 <Td first>
                   <span className="font-mono text-text-tertiary">
@@ -419,12 +515,22 @@ export function AccountTabs({
                 </Td>
               </tr>
             ))}
-          </Table>
-        </TabsPrimitive.Content>
+        </TabPanel>
 
-        <TabsPrimitive.Content value="fills">
-          <Table head={["Time", "Market", "Side", "Price", "Qty", "Role", "Fee"]}>
-            {FILLS.map((f) => (
+        <TabPanel
+          value="fills"
+          loading={loading}
+          head={["Time", "Market", "Side", "Price", "Qty", "Role", "Fee"]}
+          isEmpty={FILLS.length === 0}
+          empty={
+            <EmptyState
+              icon={ListIcon}
+              title="No fills yet"
+              description="Every execution is recorded here, with its maker or taker fee."
+            />
+          }
+        >
+          {FILLS.map((f) => (
               <tr key={f.id} className="hover:bg-surface-hover">
                 <Td first className="text-text-tertiary">
                   {formatTime(f.ts)}
@@ -439,12 +545,25 @@ export function AccountTabs({
                 <Td className="text-text-tertiary">{f.fee}</Td>
               </tr>
             ))}
-          </Table>
-        </TabsPrimitive.Content>
+        </TabPanel>
 
-        <TabsPrimitive.Content value="balances">
-          <Table head={["Asset", "Total", "Available", "In orders"]}>
-            {BALANCES.map((b) => (
+        <TabPanel
+          value="balances"
+          loading={loading}
+          head={["Asset", "Total", "Available", "In orders"]}
+          isEmpty={BALANCES.length === 0}
+          empty={
+            <EmptyState
+              icon={WalletIcon}
+              title="No collateral deposited"
+              description="Deposit to fund your cross-margin account and start trading."
+              // The one empty state in the app with an obvious next action, so
+              // it is the one that gets a button.
+              action={<DepositButton size="md" />}
+            />
+          }
+        >
+          {BALANCES.map((b) => (
               <tr key={b.asset} className="hover:bg-surface-hover">
                 <Td first className="text-text-primary">
                   {b.asset}
@@ -456,12 +575,22 @@ export function AccountTabs({
                 <Td className="text-text-tertiary">{b.inOrders}</Td>
               </tr>
             ))}
-          </Table>
-        </TabsPrimitive.Content>
+        </TabPanel>
 
-        <TabsPrimitive.Content value="history">
-          <Table head={["Time", "Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status"]}>
-            {ORDER_HISTORY.map((o) => (
+        <TabPanel
+          value="history"
+          loading={loading}
+          head={["Time", "Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status"]}
+          isEmpty={ORDER_HISTORY.length === 0}
+          empty={
+            <EmptyState
+              icon={ListIcon}
+              title="No order history"
+              description="Filled and cancelled orders are archived here."
+            />
+          }
+        >
+          {ORDER_HISTORY.map((o) => (
               <tr key={o.id} className="hover:bg-surface-hover">
                 <Td first className="text-text-tertiary">
                   {formatTime(o.ts)}
@@ -486,8 +615,7 @@ export function AccountTabs({
                 </Td>
               </tr>
             ))}
-          </Table>
-        </TabsPrimitive.Content>
+        </TabPanel>
       </ScrollArea>
     </TabsPrimitive.Root>
   );

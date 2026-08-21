@@ -1,6 +1,22 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
-import { TooltipProvider } from "@/components/ui";
+/**
+ * Imported from their own modules, NOT from the `@/components/ui` barrel.
+ *
+ * This layout is a Server Component, and the barrel has no `"use client"` —
+ * so reaching a client module through it makes the module a client *reference*
+ * created on the server, while the client components that import the same
+ * barrel pull the module into the browser graph directly. The two do not
+ * always unify, and when they do not you get two instances of the same React
+ * context: the provider sets one, `useToast` reads the other, and every
+ * consumer throws "must be used inside <ToastProvider>" with the provider
+ * plainly right there in the tree.
+ *
+ * Rule: a context provider crossing the server/client boundary is imported by
+ * path.
+ */
+import { ToastProvider } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 /**
@@ -38,7 +54,10 @@ export default function RootLayout({
         {/* Shared tooltip timing — hovering between adjacent tooltips should
             not restart the open delay each time. */}
         <TooltipProvider delayDuration={200} skipDelayDuration={400}>
-          {children}
+          {/* Toasts mount at the root because a fill can land while the user is
+              anywhere — including inside a dialog. The viewport is portalled
+              above every other layer for the same reason. */}
+          <ToastProvider>{children}</ToastProvider>
         </TooltipProvider>
       </body>
     </html>

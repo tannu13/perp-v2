@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SiteHeader } from "@/components/chrome/site-header";
 import { Ramp, Swatch } from "./_components/Swatch";
 import {
   Callout,
@@ -12,6 +13,7 @@ import {
   Th,
 } from "./_components/ui";
 import {
+  animations,
   breakpoints,
   colorGroups,
   elevations,
@@ -77,9 +79,13 @@ function DecisionCard({ d }: { d: Decision }) {
 
 export default function DesignSystemPage() {
   return (
-    <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-x-12 px-5 pb-24 lg:grid-cols-[208px_minmax(0,1fr)] lg:px-8">
+    <>
+      {/* Global chrome. Not sticky, so the contents rail below can keep its own
+          sticky offset without having to subtract a header height from it. */}
+      <SiteHeader />
+      <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-x-12 px-5 pb-24 lg:grid-cols-[208px_minmax(0,1fr)] lg:px-8">
       {/* ---------------------------------------------------- masthead --- */}
-      <header className="col-span-full mb-10 border-b border-border-subtle pt-14 pb-10">
+      <header className="col-span-full mb-10 border-b border-border-subtle pt-10 pb-10">
         <div className="mb-4 flex flex-wrap items-center gap-2.5 font-mono text-micro uppercase text-text-tertiary">
           <span className="size-1.5 rounded-full bg-buy shadow-[0_0_0_3px_rgb(0_194_120/0.18)]" />
           Perp v2 · Frontend
@@ -500,7 +506,12 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ------------------------------------------------------- motion -- */}
-        <Section id="motion" num="07" title="Motion" note="4 durations · 3 curves">
+        <Section
+          id="motion"
+          num="07"
+          title="Motion"
+          note="4 durations · 3 curves · 8 animations"
+        >
           <Note>
             Trading interfaces punish slow animation. Nothing that gates a click
             exceeds 120ms; base is for surfaces, and slow is reserved for panels
@@ -524,6 +535,42 @@ export default function DesignSystemPage() {
               ))}
             </tbody>
           </TableWrap>
+
+          <SubHead>Named animations</SubHead>
+          <TableWrap>
+            <thead>
+              <tr>
+                <Th>Token</Th>
+                <Th>Timing</Th>
+                <Th>Applies to</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {animations.map((a) => (
+                <tr key={a.token}>
+                  <Td mono>{a.token}</Td>
+                  <Td mono>{a.value}</Td>
+                  <Td>{a.applies}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+
+          <Callout tone="warn">
+            <b className="font-semibold text-text-primary">
+              Every animation is a token because inline ones failed silently.
+            </b>{" "}
+            Dialog previously carried{" "}
+            <code className="font-mono text-num-sm text-text-primary">
+              animate-in fade-in
+            </code>
+            , which belong to the tailwindcss-animate plugin. That plugin is not
+            installed here, so both classes compiled to nothing and every dialog
+            hard-cut into view — with a fully green build the entire time. This
+            is the third defect on this project that a passing build did not
+            catch, which is why the rule is to grep the compiled CSS and check
+            the browser.
+          </Callout>
 
           <Callout>
             <b className="font-semibold text-text-primary">
@@ -716,6 +763,7 @@ export default function DesignSystemPage() {
           <span>Phase 1 · dark-only · light theme = Layer 2 remap</span>
         </footer>
       </main>
-    </div>
+      </div>
+    </>
   );
 }

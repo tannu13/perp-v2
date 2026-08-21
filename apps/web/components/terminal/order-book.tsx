@@ -5,7 +5,14 @@ import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
 import type { Depth, DepthLevel } from "@/lib/market-feed";
 import type { Market } from "@/lib/markets";
-import { Delta, Seam } from "@/components/ui";
+import {
+  Delta,
+  EmptyState,
+  LayersIcon,
+  Seam,
+  SkeletonRegion,
+  SkeletonRows,
+} from "@/components/ui";
 
 /**
  * The depth ladder — the product's most characteristic surface.
@@ -156,6 +163,21 @@ export function OrderBook({
           ? "down"
           : "flat";
 
+  /**
+   * Three distinct states, and conflating any two of them tells a lie.
+   *
+   *   depth === null      no snapshot has arrived — the socket is still opening.
+   *                       A shimmering ladder is the truth here.
+   *   depth, no levels    the book really is empty. A permanent shimmer would
+   *                       claim data is still coming when nothing is.
+   *   levels              the ladder.
+   *
+   * The skeleton renders the same row count at the same `--size-row`, above and
+   * below the seam, so the seam does not jump when the first snapshot lands.
+   */
+  const connecting = depth === null;
+  const empty = !connecting && bids.length === 0 && asks.length === 0;
+
   return (
     <div className={cn("flex h-full flex-col", className)}>
       <div className="flex items-center px-2 pb-1 text-micro uppercase text-text-tertiary">
@@ -166,6 +188,11 @@ export function OrderBook({
 
       {/* Asks render worst-price-first so the best ask sits against the seam. */}
       <div className="flex flex-col-reverse justify-end overflow-hidden">
+        {connecting && (
+          <SkeletonRegion label={`Loading ${market.slug} order book`}>
+            <SkeletonRows rows={rows} columns={3} className="px-2" />
+          </SkeletonRegion>
+        )}
         {asks.map((row) => (
           <LevelRow
             key={`a-${row.price}`}
@@ -198,6 +225,19 @@ export function OrderBook({
       </div>
 
       <div className="flex flex-col overflow-hidden">
+        {connecting && (
+          // Unlabelled: SkeletonRegion above already announced the book once,
+          // and two live regions for one ladder would read it out twice.
+          <SkeletonRows rows={rows} columns={3} className="px-2" />
+        )}
+        {empty && (
+          <EmptyState
+            size="sm"
+            icon={LayersIcon}
+            title="No resting orders"
+            description="Nothing is quoted on either side of this market yet."
+          />
+        )}
         {bids.map((row) => (
           <LevelRow
             key={`b-${row.price}`}

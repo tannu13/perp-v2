@@ -7,7 +7,6 @@ import { formatCompact, formatCountdown, formatNumber } from "@/lib/format";
 import { MARKETS, type Market } from "@/lib/markets";
 import type { FeedState } from "@/lib/market-feed";
 import { Badge, Delta, StatusDot, Tooltip } from "@/components/ui";
-import { DepositDialog } from "./deposit-dialog";
 
 function Stat({
   label,
@@ -169,10 +168,6 @@ export function MarketBar({
                 : "connecting"}
           </span>
         </div>
-
-        {/* Account-level, not market-level — it belongs in the global header
-            once that exists. The market bar is the only top chrome for now. */}
-        <DepositDialog />
       </div>
     </div>
   );

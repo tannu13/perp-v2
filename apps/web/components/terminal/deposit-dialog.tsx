@@ -26,14 +26,24 @@ import {
  */
 const PRESETS = [100, 500, 1000, 5000];
 
+/**
+ * Controlled, with no trigger of its own.
+ *
+ * It used to own both the button and the dialog, which was fine while the market
+ * bar was the only chrome. Now the global header opens it from two places — the
+ * Deposit button and the account menu — and a self-contained trigger cannot
+ * serve both. `DepositButton` below restores the one-line usage for anywhere
+ * that just wants a button.
+ */
 export function DepositDialog({
   balance = 2521,
-  className,
+  open,
+  onOpenChange,
 }: {
   balance?: number;
-  className?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -49,25 +59,15 @@ export function DepositDialog({
     // API client yet and the backend stack is not running.
     await new Promise((r) => setTimeout(r, 600));
     setPending(false);
-    setOpen(false);
+    onOpenChange(false);
     setAmount("");
   };
 
   return (
-    <>
-      <Button
-        intent="primary"
-        size="sm"
-        className={className}
-        onClick={() => setOpen(true)}
-      >
-        Deposit
-      </Button>
-
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          setOpen(next);
+          onOpenChange(next);
           if (!next) setAmount("");
         }}
       >
@@ -136,6 +136,32 @@ export function DepositDialog({
           </div>
         </DialogContent>
       </Dialog>
+  );
+}
+
+/** Button plus dialog, for callers that do not need to open it from elsewhere. */
+export function DepositButton({
+  balance,
+  className,
+  size = "sm",
+}: {
+  balance?: number;
+  className?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {/* `primary`, not `buy` — adding collateral is not a direction. */}
+      <Button
+        intent="primary"
+        size={size}
+        className={className}
+        onClick={() => setOpen(true)}
+      >
+        Deposit
+      </Button>
+      <DepositDialog balance={balance} open={open} onOpenChange={setOpen} />
     </>
   );
 }

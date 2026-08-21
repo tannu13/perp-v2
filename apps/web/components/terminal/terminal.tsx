@@ -13,6 +13,7 @@ import {
   ScrollArea,
   SegmentedControl,
 } from "@/components/ui";
+import { SiteHeader } from "@/components/chrome/site-header";
 import { AccountTabs } from "./account-tabs";
 import { MarketBar } from "./market-bar";
 import { OrderBook } from "./order-book";
@@ -97,14 +98,29 @@ export function Terminal({ market }: { market: Market }) {
     <div
       className={cn(
         "flex flex-col bg-surface-base",
-        // One padding value and one gap for the whole shell, so the market bar,
-        // the panel row and the window edges all share the same rhythm. 8px
-        // rather than 6: once every section became a raised panel, 6 read as
-        // cramped, and the extra 2px costs well under one order-book row.
-        "gap-2 p-2",
         "min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden",
       )}
     >
+      {/*
+        The header is full-bleed chrome and a fixed 56px row; the panel region
+        below takes the remainder. It sits INSIDE the h-dvh column rather than
+        above it so the "header plus panels equals the window, exactly"
+        invariant stays readable in one file — this is the layout that grew a
+        page scrollbar the last time a fixed-height element was added without
+        the flex row being told to give up space for it.
+      */}
+      <SiteHeader />
+
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          // One padding value and one gap for the whole shell, so the market
+          // bar, the panel row and the window edges all share the same rhythm.
+          // 8px rather than 6: once every section became a raised panel, 6 read
+          // as cramped, and the extra 2px costs well under one order-book row.
+          "gap-2 p-2",
+        )}
+      >
       <MarketBar market={market} feed={feed} className={PANEL} />
 
       {/* Pane switcher — mobile only; at lg the panes are all visible at once. */}
@@ -211,7 +227,11 @@ export function Terminal({ market }: { market: Market }) {
                 bookTab === "trades" ? "lg:block" : "lg:hidden",
               )}
             >
-              <TradesFeed trades={feed.trades} market={market} />
+              <TradesFeed
+                trades={feed.trades}
+                market={market}
+                source={feed.source}
+              />
             </div>
           </ScrollArea>
         </div>
@@ -256,6 +276,7 @@ export function Terminal({ market }: { market: Market }) {
           </Dialog>
         </>
       )}
+      </div>
     </div>
   );
 }

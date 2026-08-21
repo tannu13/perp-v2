@@ -44,17 +44,46 @@ const SHADOWS = [
 /** Named speeds registered via @utility — not part of Tailwind's numeric scale. */
 const DURATIONS = ["instant", "fast", "base", "slow"] as const;
 
+/**
+ * Our `--animate-*` tokens, plus the Tailwind defaults we still rely on.
+ *
+ * Tailwind's stock animate group only knows spin/pulse/bounce/ping/none, so an
+ * unlisted custom name is unclassifiable — and an unclassified class is not
+ * merged, it is silently passed through *and* never allowed to override.
+ * `animate-toast-in data-[state=closed]:animate-toast-out` needs both sides
+ * recognised as the same group for the exit to win.
+ */
+const ANIMATIONS = [
+  "flash-buy",
+  "flash-sell",
+  "shimmer",
+  "overlay-in",
+  "overlay-out",
+  "dialog-in",
+  "dialog-out",
+  "sheet-in",
+  "sheet-out",
+  "menu-in",
+  "menu-out",
+  "toast-in",
+  "toast-out",
+  "toast-in-mobile",
+  "spin",
+  "pulse",
+  "none",
+] as const;
+
 const twMerge = extendTailwindMerge({
   override: {
     classGroups: {
       "font-size": [{ text: [...FONT_SIZES] }],
       shadow: [{ shadow: [...SHADOWS] }],
+      animate: [{ animate: [...ANIMATIONS] }],
     },
   },
   extend: {
     classGroups: {
       duration: [{ duration: [...DURATIONS] }],
-      animate: [{ animate: ["flash-buy", "flash-sell"] }],
     },
   },
 });

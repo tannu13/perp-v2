@@ -29,13 +29,15 @@ export const colorGroups: ColorGroup[] = [
   {
     id: "surfaces",
     title: "Surfaces",
-    note: "On a near-black ground, shadow barely registers — elevation reads through background lightness plus a hairline border. Inputs sit ABOVE the panel, not below: the first pass recessed them and they vanished into the page, which is also why every comparable terminal raises them. surface-inset is now reserved for things that genuinely are recessed — slider grooves, table headers, meter tracks.",
+    note: "On a near-black ground, shadow barely registers — elevation reads through background lightness plus a hairline border. Inputs sit ABOVE the panel, not below: the first pass recessed them and they vanished into the page, which is also why every comparable terminal raises them. surface-inset is now reserved for things that genuinely are recessed — slider grooves, table headers, meter tracks. Toasts sit at the very top: at surface-overlay a fill confirmation measured 1.06:1 against the panel behind it — the same colour, for practical purposes — and was reported as unnoticeable. At surface-toast it is 1.24:1, and the arrival flash peaks at 1.70:1.",
     tokens: [
       { varName: "color-surface-base", resolves: "neutral-950", usage: "App canvas", fill: 100 },
       { varName: "color-surface-raised", resolves: "neutral-900", usage: "Panels, cards, rails", fill: 82 },
       { varName: "color-surface-input", resolves: "literal", usage: "Text fields — raised above the panel", fill: 70 },
       { varName: "color-surface-overlay", resolves: "neutral-850", usage: "Dropdowns, popovers", fill: 64 },
       { varName: "color-surface-modal", resolves: "neutral-800", usage: "Dialogs, bottom sheets", fill: 48 },
+      { varName: "color-surface-toast", resolves: "neutral-750", usage: "Toasts — the top of the ladder", fill: 42 },
+      { varName: "color-surface-toast-flash", resolves: "literal", usage: "Brighter step a toast settles down from on arrival", fill: 40 },
       { varName: "color-surface-inset", resolves: "literal", usage: "Slider grooves, table headers", fill: 36 },
       { varName: "color-surface-hover", resolves: "white 4%", usage: "Row and control hover", fill: 22 },
       { varName: "color-surface-active", resolves: "white 8%", usage: "Pressed state", fill: 16 },
@@ -209,6 +211,26 @@ export const motion: { token: string; value: string; applies: string }[] = [
   { token: "--ease-out-quart", value: "0.25, 1, 0.5, 1", applies: "Default — entrances" },
   { token: "--ease-in-out-quart", value: "0.76, 0, 0.24, 1", applies: "Between two anchored states" },
   { token: "--ease-spring", value: "0.34, 1.56, 0.64, 1", applies: "Toggles, sliders — slight overshoot" },
+];
+
+/**
+ * Named animations.
+ *
+ * These are declared as `--animate-*` tokens rather than written inline for a
+ * reason with a scar attached: Dialog previously carried `animate-in fade-in`,
+ * which are tailwindcss-animate plugin classes. That plugin is not installed,
+ * so both compiled to nothing and every dialog hard-cut into view — through a
+ * green build, for weeks. A token cannot fail that quietly.
+ */
+export const animations: { token: string; value: string; applies: string }[] = [
+  { token: "--animate-shimmer", value: "1.6s linear infinite", applies: "Skeleton sweep — the only looping animation in the app" },
+  { token: "--animate-overlay-in / -out", value: "base / fast", applies: "Dialog and sheet scrims" },
+  { token: "--animate-dialog-in / -out", value: "base / fast", applies: "Centred modal — scales from 0.97; animates transform ONLY, never translate" },
+  { token: "--animate-sheet-in / -out", value: "slow / base", applies: "Mobile bottom sheet — the one surface allowed a full-height travel" },
+  { token: "--animate-menu-in / -out", value: "fast / instant", applies: "Dropdown menus, from the edge Radix placed them against" },
+  { token: "--animate-toast-in / -out", value: "560ms linear / fast", applies: "Desktop toast — short travel, then two luminance ticks that cool to rest" },
+  { token: "--animate-toast-in-mobile", value: "560ms linear", applies: "Mobile toast, arriving downward from the top" },
+  { token: "--animate-flash-buy / -sell", value: "400ms", applies: "Price-tick flash on an order-book level" },
 ];
 
 export const breakpoints: { name: string; range: string; behaviour: string; cols: { flex: number; label: string; tone: string }[] }[] = [

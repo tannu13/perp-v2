@@ -31,10 +31,20 @@ export function DialogContent({
 }) {
   return (
     <DialogPrimitive.Portal>
+      {/*
+        Entrance and exit animations come from our own `--animate-*` tokens.
+        They previously read `animate-in fade-in`, which are tailwindcss-animate
+        plugin classes — that plugin is not installed, so those compiled to
+        nothing and every dialog hard-cut into view. A green build the whole
+        time; see the verification note in CLAUDE.md.
+
+        Radix keeps the element mounted while a CSS animation is running on it,
+        so `data-[state=closed]` exits work without any JS timing on our side.
+      */}
       <DialogPrimitive.Overlay
         className={cn(
           "fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]",
-          "data-[state=open]:animate-in data-[state=open]:fade-in",
+          "animate-overlay-in data-[state=closed]:animate-overlay-out",
         )}
       />
       <DialogPrimitive.Content
@@ -46,10 +56,17 @@ export function DialogContent({
                 "inset-x-0 bottom-0 rounded-t-xl p-5 pb-8",
                 "md:inset-auto md:top-1/2 md:left-1/2 md:w-full md:max-w-md",
                 "md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:p-5 md:pb-5",
+                // The sheet rises from the bottom edge; the desktop modal scales
+                // from the centre. They need different keyframes because the
+                // centred one has to carry its own -50%/-50% offset through the
+                // animation, and a shared keyframe would fight the sheet.
+                "animate-sheet-in data-[state=closed]:animate-sheet-out",
+                "md:animate-dialog-in md:data-[state=closed]:animate-dialog-out",
               ]
             : [
                 "top-1/2 left-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2",
                 "rounded-xl p-5",
+                "animate-dialog-in data-[state=closed]:animate-dialog-out",
               ],
           className,
         )}

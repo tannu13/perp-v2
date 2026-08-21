@@ -112,6 +112,16 @@
   --color-surface-raised: var(--color-neutral-900); /* panels, cards       */
   --color-surface-overlay: var(--color-neutral-850); /* dropdowns, popovers */
   --color-surface-modal: var(--color-neutral-800); /* dialogs, sheets     */
+  /* Toasts are the topmost layer in the app — they render above dialogs — and
+     the elevation ladder should say so. At surface-overlay they were only
+     #16181c against a #101114 panel, which on a screen this dark reads as a
+     slightly-off rectangle rather than something that arrived. Shadow cannot
+     rescue it: on near-black, elevation is carried by lightness, not shade.
+     `flash` is the brighter step the entrance settles down FROM — a luminance
+     cue, deliberately hueless, because a coloured one would claim an intent
+     the toast may not have. */
+  --color-surface-toast: var(--color-neutral-750); /* toasts — top layer  */
+  --color-surface-toast-flash: #363c45;
   /* Inputs sit ABOVE their container, not below.
      The first pass recessed them (darker than the panel) on the theory that a
      well reads as "type here". In practice they vanished into the page — and
@@ -190,6 +200,15 @@
   --color-danger-muted: rgb(239 68 68 / 0.12);
   --color-info: var(--color-primary-500);
   --color-info-muted: rgb(46 124 246 / 0.12);
+
+  /* --- Placeholder / skeleton ----------------------------------------------
+     A skeleton has to read as "not yet data" against panels that are themselves
+     near-black. `base` sits one step above surface-raised so the block is
+     visible without becoming a design element, and `sheen` is the sweep that
+     separates a loading block from an empty one — at rest they look identical,
+     and motion is the only thing that distinguishes them. */
+  --color-skeleton-base: var(--color-neutral-850);
+  --color-skeleton-sheen: rgb(255 255 255 / 0.05);
 
   /* --- Margin health -------------------------------------------------------
      Domain-specific ramp for liquidation proximity. Distinct from feedback so
@@ -363,6 +382,43 @@
   --animate-flash-buy: flash-buy 400ms var(--ease-out-quart);
   --animate-flash-sell: flash-sell 400ms var(--ease-out-quart);
 
+  /* Skeleton sweep. Slower than anything else here on purpose — this is the
+     one animation that is not reacting to a user action, and at terminal speed
+     it strobes. Linear, because an eased sweep reads as a pulse. */
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  /* Overlay entrances.
+     These exist because the entrance classes previously written on Dialog
+     (`animate-in`, `fade-in`) belong to the tailwindcss-animate plugin, which
+     is not installed — they compiled to nothing and dialogs appeared with a
+     hard cut. Declared as real tokens, they cannot silently disappear again.
+
+     Exits are separate and faster than entrances: a surface you dismissed
+     should get out of the way, while one you summoned can afford to arrive. */
+  --animate-overlay-in: fade-in var(--duration-base) var(--ease-out-quart);
+  --animate-overlay-out: fade-out var(--duration-fast) var(--ease-in-out-quart);
+  --animate-dialog-in: dialog-in var(--duration-base) var(--ease-out-quart);
+  --animate-dialog-out: dialog-out var(--duration-fast) var(--ease-in-out-quart);
+  --animate-sheet-in: sheet-in var(--duration-slow) var(--ease-out-quart);
+  --animate-sheet-out: sheet-out var(--duration-base) var(--ease-in-out-quart);
+  --animate-menu-in: menu-in var(--duration-fast) var(--ease-out-quart);
+  --animate-menu-out: menu-out var(--duration-instant) var(--ease-in-out-quart);
+  /* Toasts enter from the edge they are docked to, so the motion names the
+     origin. Swipe-dismiss is driven by Radix and is not animated here.
+
+     A brief luminance change is what the eye picks up in peripheral vision, and
+     a toast that has to be noticed while the user is reading the book cannot
+     rely on a slide at the edge of the screen. Nothing here gates a click, so
+     the 120ms ceiling for interactive feedback does not apply.
+
+     `linear`, not an ease — the keyframe percentages are a rhythm (tick, tick,
+     cool) and an ease would squash both ticks into the first third of the run
+     and stretch the tail. The entrance travel keeps its own easing via a
+     per-keyframe `animation-timing-function` on the first segment. */
+  --animate-toast-in: toast-in 560ms linear;
+  --animate-toast-out: toast-out var(--duration-fast) var(--ease-in-out-quart);
+  --animate-toast-in-mobile: toast-in-mobile 560ms linear;
+
   /* ==========================================================================
      BREAKPOINTS
      Three primary targets, two transitional. Mobile-first: unprefixed styles
@@ -399,6 +455,11 @@
   --size-control-sm: 28px;
   --size-control-md: 36px;
   --size-control-lg: 44px; /* min touch target on mobile */
+  /* Toast column. Wide enough for "Filled · LONG 4.74 SOL @ 204.96" on one
+     line, which is the whole point — a fill confirmation that wraps reads as
+     an error message. */
+  --size-toast: 356px;
+  --size-account-menu: 256px;
 }
 
 /* ============================================================================
@@ -420,5 +481,200 @@
   }
   100% {
     background-color: transparent;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Skeleton sweep.
+   Travels 200% because the gradient element is sized 200% of its container —
+   translating the paint rather than animating background-position keeps it on
+   the compositor, and a skeleton is often on screen beside a live chart.
+   -------------------------------------------------------------------------- */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Overlay entrances and exits.
+   Distances are deliberately small (4–8px). A modal that flies in from far away
+   costs attention that belongs to the content; the movement only needs to say
+   "this is new" and stop.
+   -------------------------------------------------------------------------- */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* These animate `transform` ONLY, and deliberately do not restate the centring
+   offset — that belongs to the `-translate-x-1/2 -translate-y-1/2` utilities on
+   the element.
+
+   Tailwind v4 compiles those to the independent `translate` property, leaving
+   `transform: none`. CSS applies `translate` first and `transform` second, so a
+   keyframe that also said `translate(-50%, -50%)` composed with the utility and
+   ran the whole animation at -100%/-100% — half the dialog's size up and left —
+   then snapped into place the instant the animation ended and `transform`
+   reverted to none. That was the jank on both entry and exit. Scale composes
+   cleanly; translate does not. */
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* The mobile sheet is the one surface allowed a full-height travel — it is
+   anchored to the thumb and the distance is the affordance. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes menu-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* Desktop toasts dock top-right and arrive from the right edge; on mobile they
+   dock to the top and arrive downward, because a horizontal slide on a phone
+   fights the swipe-to-dismiss gesture. */
+/* The toast lands, then settles.
+   It used to slide the full width of itself in from off-screen, which is motion
+   happening entirely in the periphery — if you were not already looking at the
+   corner, the whole event was over before it entered view. Now the travel is
+   short and the attention is carried by luminance: it arrives at the brighter
+   `flash` step and cools to its resting surface over the back half. That is the
+   same device the order book uses to show which level moved, which is why it
+   reads as this system rather than as a new trick. */
+/* Two ticks, then cool.
+   Same two levels as a single flash — `flash` and the resting surface — but the
+   pattern is lit, dark, lit, fade. A repeated signal reads as deliberate where
+   one can be mistaken for a repaint, and the eye locks onto the second tick
+   even if it missed the arrival. The dark step lands exactly on the resting
+   colour rather than somewhere between, so the ticks stay square instead of
+   dissolving into a throb. */
+@keyframes toast-in {
+  0% {
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+    background-color: var(--color-surface-toast-flash);
+    /* Travel eases; everything after it is on the linear rhythm. */
+    animation-timing-function: var(--ease-out-quart);
+  }
+  22% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    background-color: var(--color-surface-toast-flash);
+    animation-timing-function: linear;
+  }
+  34% {
+    background-color: var(--color-surface-toast);
+  }
+  46% {
+    background-color: var(--color-surface-toast-flash);
+  }
+  60% {
+    background-color: var(--color-surface-toast-flash);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    background-color: var(--color-surface-toast);
+  }
+}
+@keyframes toast-in-mobile {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.98);
+    background-color: var(--color-surface-toast-flash);
+    animation-timing-function: var(--ease-out-quart);
+  }
+  22% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    background-color: var(--color-surface-toast-flash);
+    animation-timing-function: linear;
+  }
+  34% {
+    background-color: var(--color-surface-toast);
+  }
+  46% {
+    background-color: var(--color-surface-toast-flash);
+  }
+  60% {
+    background-color: var(--color-surface-toast-flash);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    background-color: var(--color-surface-toast);
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
   }
 }
