@@ -3,6 +3,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  smallint,
   timestamp,
   uniqueIndex,
   uuid,
@@ -36,10 +37,26 @@ export const users = pgTable(
   (t) => [uniqueIndex("user_username_unique").on(t.username)],
 );
 
+/**
+ * Display and risk metadata are deliberately NULLABLE.
+ *
+ * They are populated by `db:seed`, not by the migration. A wrong-but-present
+ * default — a tick size of 0.01 on BTC, a leverage cap of 1 — would be served
+ * to the UI as if it were true; a null makes an unseeded database fail loudly
+ * at the API boundary instead, naming the command that fixes it.
+ */
 export const markets = pgTable("markets", {
   id: uuid("id").primaryKey().defaultRandom(),
   slug: varchar("slug", { length: 255 }).notNull(),
   imageUrl: varchar("image_url", { length: 255 }),
+  base: varchar("base", { length: 16 }),
+  quote: varchar("quote", { length: 16 }),
+  priceDecimals: smallint("price_decimals"),
+  sizeDecimals: smallint("size_decimals"),
+  tickSize: varchar("tick_size", { length: 32 }),
+  /** Mirrors the engine's `allowedLeverage`; both read `@repo/db/markets`. */
+  maxLeverage: smallint("max_leverage"),
+  binanceSymbol: varchar("binance_symbol", { length: 32 }),
 });
 
 export const orders = pgTable("orders", {

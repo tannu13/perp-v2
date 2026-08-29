@@ -312,7 +312,7 @@ export const openQuestions: { title: string; body: string }[] = [
   },
   {
     title: "Account state is duplicated",
-    body: "A hardcoded balance of 2521 appears in the order ticket, the deposit dialog and the balances table. They will disagree the moment one changes. This wants lifting into shared account state, which belongs with the API client rather than being solved twice.",
+    body: "A hardcoded balance of 2521 appeared in the order ticket, the deposit dialog and the balances table, with two other figures elsewhere — four surfaces, four numbers. Resolved: `AccountProvider` in lib/account.tsx now owns one snapshot from GET /equity/balances, and every surface reads it. Equity is available + locked, summed as decimal strings rather than floats.",
   },
   {
     title: "Mobile is verified analytically, not visually",

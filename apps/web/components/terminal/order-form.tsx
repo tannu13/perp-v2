@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { LeverageSlider } from "@/components/ui/leverage-slider";
 import { useFillToast } from "./fill-toast";
+import { useAccount } from "@/lib/account";
 
 /**
  * Order ticket.
@@ -33,16 +34,22 @@ export function OrderForm({
   lastPrice,
   price,
   onPriceChange,
-  balance = 2521,
   className,
 }: {
   market: Market;
   lastPrice: number | null;
   price: string;
   onPriceChange: (next: string) => void;
-  balance?: number;
   className?: string;
 }) {
+  const account = useAccount();
+  /**
+   * Buying power is free collateral, not equity: margin already locked in
+   * resting orders and open positions cannot back a new one.
+   */
+  const balance =
+    account.status === "ready" ? Number.parseFloat(account.data.available) : 0;
+
   const [side, setSide] = useState<"LONG" | "SHORT">("LONG");
   const [orderType, setOrderType] = useState<"limit" | "market">("limit");
   const [qty, setQty] = useState("");
@@ -255,7 +262,8 @@ export function OrderForm({
           Advanced
           {(postOnly || reduceOnly) && (
             <span className="text-text-disabled">
-              · {[postOnly && "post only", reduceOnly && "reduce only"]
+              ·{" "}
+              {[postOnly && "post only", reduceOnly && "reduce only"]
                 .filter(Boolean)
                 .join(", ")}
             </span>
@@ -280,8 +288,8 @@ export function OrderForm({
         <DialogContent>
           <DialogTitle>Confirm order</DialogTitle>
           <DialogDescription>
-            This submits a {orderType} order to the matching engine. It cannot be
-            recalled once filled.
+            This submits a {orderType} order to the matching engine. It cannot
+            be recalled once filled.
           </DialogDescription>
 
           <dl className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-inset p-3 text-body-sm">
@@ -309,9 +317,7 @@ export function OrderForm({
               container, so together they overflowed past the dialog edge. */}
           <div className="flex gap-2 *:flex-1">
             <DialogClose asChild>
-              <Button intent="neutral">
-                Cancel
-              </Button>
+              <Button intent="neutral">Cancel</Button>
             </DialogClose>
             {/* Re-checks `canSubmit` rather than trusting that the dialog could
                 only have been opened while it was true. The ticket stays live

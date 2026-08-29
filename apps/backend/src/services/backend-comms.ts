@@ -8,6 +8,7 @@ import {
   type TStreamEngineResponseMessage,
   type TEngineResponseSchema,
 } from "@repo/shared/redis-events";
+import { ServiceUnavailableError } from "../errors/custom-errors";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;
@@ -153,22 +154,67 @@ export const setupComms = async () => {
     }
   };
 
-  const sendToEngineStream = async (
+  /**
+   * Publishes a request to the engine and waits for the correlated reply.
+   *
+   * The previous version captured `rej` and never called it, and set no
+   * timeout. So if the engine was down, had crashed mid-request, or produced a
+   * reply the listener could not parse — the listener `xAck`s and `continue`s
+   * on a parse failure, dropping it — the resolver stayed in the map forever
+   * and the HTTP request hung until the client gave up. A spinner that never
+   * resolves and never errors is worse than either outcome on its own.
+   *
+   * It also leaked: nothing removed a resolver from the map, including on the
+   * success path, so the map grew by one entry per request for the life of the
+   * process.
+   */
+  const sendToEngineStream = (
     type: TEngineSupportedTypes,
     payload: Record<string, unknown>,
   ) => {
     const correlationId = crypto.randomUUID();
-    return new Promise<TEngineResponseSchema>(async (res, rej) => {
-      promiseResolvers.set(correlationId, res);
-      await senderClient.xAdd(OUTGOING_STREAM, "*", {
-        correlationId,
-        type,
-        payload: JSON.stringify(payload),
-      });
+
+    return new Promise<TEngineResponseSchema>((resolve, reject) => {
+      const settle = (fn: () => void) => {
+        clearTimeout(timer);
+        promiseResolvers.delete(correlationId);
+        fn();
+      };
+
+      const timer = setTimeout(() => {
+        settle(() =>
+          reject(
+            new ServiceUnavailableError(
+              "The matching engine is not responding",
+              "ENGINE_TIMEOUT",
+            ),
+          ),
+        );
+      }, env.ENGINE_TIMEOUT_MS);
+
+      promiseResolvers.set(correlationId, (value) =>
+        settle(() => resolve(value)),
+      );
+
+      senderClient
+        .xAdd(OUTGOING_STREAM, "*", {
+          correlationId,
+          type,
+          payload: JSON.stringify(payload),
+        })
+        .catch((err) => settle(() => reject(err)));
     });
   };
 
-  return { handlePendingEntries, listenToIncomingEvents, sendToEngineStream };
+  /** Exposed for tests: proves the map does not grow across requests. */
+  const pendingRequestCount = () => promiseResolvers.size;
+
+  return {
+    handlePendingEntries,
+    listenToIncomingEvents,
+    sendToEngineStream,
+    pendingRequestCount,
+  };
 };
 
 export type TComms = Awaited<ReturnType<typeof setupComms>>;

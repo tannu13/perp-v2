@@ -63,9 +63,14 @@ export const createOrderRouter = (controller: TController) => {
 
   orderRouter.get("/fills", authenticate, controller.getFills);
 
+  /**
+   * Public. The depth ladder is the first thing on the terminal and must render
+   * before anyone signs in; gating it behind a token meant a signed-out visitor
+   * saw an empty book. It exposes nothing user-scoped — aggregate resting size
+   * per price level, no order ids, no counterparties.
+   */
   orderRouter.get(
     "/depth",
-    authenticate,
     validate("query", z.object({ marketId: z.string().trim().min(1) })),
     controller.getDepth,
   );

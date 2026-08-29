@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { formatUsd } from "@/lib/format";
 import { useAccount } from "@/lib/account";
+import { useSession } from "@/lib/auth/session-provider";
 import { DEFAULT_MARKET } from "@/lib/markets";
 import {
   Button,
+  buttonVariants,
   Delta,
   IconButton,
   LogoMark,
@@ -43,6 +45,7 @@ const NAV = [
 
 export function SiteHeader({ className }: { className?: string }) {
   const account = useAccount();
+  const session = useSession();
   const pathname = usePathname();
   const [depositOpen, setDepositOpen] = useState(false);
 
@@ -95,30 +98,53 @@ export function SiteHeader({ className }: { className?: string }) {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-        <EquityReadout account={account} />
+        {/*
+          Three states, and the middle one matters: while the session is still
+          resolving we show nothing rather than flashing "Sign in" at someone who
+          is already signed in. The header is a fixed 56px row either way, so
+          nothing reflows when it settles.
+        */}
+        {session.status === "loading" ? null : session.status === "anon" ? (
+          <>
+            {/* Links, not buttons: these navigate. `buttonVariants` gives them
+                the button's appearance and its six states without turning an
+                anchor into a click handler. */}
+            <Link
+              href="/signin"
+              className={cn(buttonVariants({ intent: "neutral", size: "sm" }))}
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/signup"
+              className={cn(buttonVariants({ intent: "primary", size: "sm" }))}
+            >
+              Create account
+            </Link>
+          </>
+        ) : (
+          <>
+            <EquityReadout account={account} />
 
-        <Button
-          intent="primary"
-          size="sm"
-          onClick={() => setDepositOpen(true)}
-          // Account-level, not market-level. `primary` because adding collateral
-          // has no direction — green would read as a long.
-        >
-          Deposit
-        </Button>
+            <Button
+              intent="primary"
+              size="sm"
+              onClick={() => setDepositOpen(true)}
+              // Account-level, not market-level. `primary` because adding
+              // collateral has no direction — green would read as a long.
+            >
+              Deposit
+            </Button>
 
-        <AccountMenu account={account} onDeposit={() => setDepositOpen(true)} />
+            <AccountMenu
+              account={account}
+              onDeposit={() => setDepositOpen(true)}
+            />
+          </>
+        )}
       </div>
 
-      <DepositDialog
-        balance={
-          account.status === "ready"
-            ? Number.parseFloat(account.data.equity)
-            : undefined
-        }
-        open={depositOpen}
-        onOpenChange={setDepositOpen}
-      />
+      <DepositDialog open={depositOpen} onOpenChange={setDepositOpen} />
     </header>
   );
 }
@@ -177,8 +203,14 @@ function EquityReadout({
         <span className="text-num-sm tnum font-semibold text-text-primary">
           {formatUsd(account.data.equity)}
         </span>
-        {/* Delta always prints a sign, so PnL direction survives without hue. */}
-        <Delta value={account.data.unrealisedPnl} size="sm" />
+        {/* Delta always prints a sign, so PnL direction survives without hue.
+            Null until Phase 9 derives it from open positions and a live mark
+            price — an em dash, never a zero, which would be a lie about money. */}
+        {account.data.unrealisedPnl === null ? (
+          <span className="text-num-sm text-text-tertiary">—</span>
+        ) : (
+          <Delta value={account.data.unrealisedPnl} size="sm" />
+        )}
       </span>
     </div>
   );

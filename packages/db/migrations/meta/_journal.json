@@ -15,6 +15,13 @@
       "when": 1779972935108,
       "tag": "0001_concerned_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787991922082,
+      "tag": "0002_glossy_northstar",
+      "breakpoints": true
     }
   ]
 }

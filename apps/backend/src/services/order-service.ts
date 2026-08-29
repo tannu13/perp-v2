@@ -19,7 +19,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   const createOrder = async (userId: string, payload: TCreateOrderSchema) => {
@@ -56,12 +56,22 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
-  const cancelOrder = async (orderId: string) => {
+  /**
+   * Cancels a resting order.
+   *
+   * The `userId` predicate is the whole point: this used to look the order up
+   * by id alone and forward it to the engine, so any authenticated user could
+   * cancel any other user's resting order simply by knowing — or guessing — its
+   * id. A miss returns 404 rather than 403 on purpose; a 403 would confirm that
+   * someone else's order id exists.
+   */
+  const cancelOrder = async (userId: string, orderId: string) => {
     const order = await db.query.orders.findFirst({
-      where: (orderRow, { eq }) => eq(orderRow.id, orderId),
+      where: (orderRow, { eq, and }) =>
+        and(eq(orderRow.id, orderId), eq(orderRow.userId, userId)),
     });
     if (!order) {
       throw new NotFoundError("Order does not exist");
@@ -72,7 +82,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   const getBalances = async (userId: string) => {
@@ -81,7 +91,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   const getOpenPositionsForMarket = async (
@@ -96,7 +106,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   const getClosedPositionsForMarket = async (
@@ -111,7 +121,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   const getOpenOrdersForMarket = async (userId: string, marketId: string) => {
@@ -156,7 +166,7 @@ export const createOrderService = ({
       throw new InvalidRequestError(response.error);
     }
 
-    return response.data;
+    return response.data.backend;
   };
 
   return {

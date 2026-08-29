@@ -20,8 +20,9 @@ export const createOrderController = (services: TService) => {
   };
 
   const cencelOrder = async (req: Request, res: Response) => {
+    const userId = req.userId!;
     const orderId = req.params.orderId as string;
-    const response = await services.cancelOrder(orderId);
+    const response = await services.cancelOrder(userId, orderId);
     return res.status(200).json(response);
   };
 

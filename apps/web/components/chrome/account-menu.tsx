@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatUsd, truncateId } from "@/lib/format";
 import { marginSplit, type AccountState } from "@/lib/account";
+import { useSession } from "@/lib/auth/session-provider";
 import {
   Avatar,
   ChevronDownIcon,
@@ -48,11 +49,20 @@ export function AccountMenu({
   account: AccountState & { retry: () => void };
   onDeposit: () => void;
 }) {
+  const { identity, signOut } = useSession();
   const [copied, setCopied] = useState(false);
 
-  const copyAddress = () => {
-    if (account.status !== "ready") return;
-    void navigator.clipboard.writeText(account.data.address);
+  /**
+   * The user id, in mono.
+   *
+   * This row used to show a fabricated Solana address. There is no deposit
+   * address in this system and `users` has no email — only `username` and
+   * `name` (G18). The id is the one real identifier, and an id is exactly what
+   * the mono restriction in CLAUDE.md exists for.
+   */
+  const copyUserId = () => {
+    if (!identity) return;
+    void navigator.clipboard.writeText(identity.userId);
     setCopied(true);
     // Local, not a toast. A toast for a copy is noise, and the toast column is
     // reserved for fills — things the user needs to see even while looking away.
@@ -71,7 +81,7 @@ export function AccountMenu({
         )}
       >
         <Avatar
-          name={account.status === "ready" ? account.data.email : "Account"}
+          name={identity?.username ?? "Account"}
           size="sm"
           intent="accent"
         />
@@ -80,7 +90,10 @@ export function AccountMenu({
 
       <DropdownMenuContent>
         {account.status === "loading" && (
-          <SkeletonRegion label="Loading account" className="flex flex-col gap-2 p-2">
+          <SkeletonRegion
+            label="Loading account"
+            className="flex flex-col gap-2 p-2"
+          >
             <Skeleton shape="text" className="h-3 w-24" />
             <Skeleton shape="text" className="h-3 w-40" />
             <Skeleton className="mt-1 h-2.5 w-full" />
@@ -104,11 +117,11 @@ export function AccountMenu({
 
             <div className="px-2.5 pb-2">
               <p className="truncate text-body-sm text-text-primary">
-                {account.data.email}
+                {identity?.username ?? "—"}
               </p>
               <button
                 type="button"
-                onClick={copyAddress}
+                onClick={copyUserId}
                 className={cn(
                   "mt-0.5 flex items-center gap-1.5 rounded-sm font-mono text-micro text-text-tertiary",
                   "transition-colors duration-fast hover:text-text-secondary",
@@ -117,14 +130,14 @@ export function AccountMenu({
               >
                 {/* Mono and slashed-zero: this is an address, one of the three
                     things mono is reserved for. */}
-                {truncateId(account.data.address, 6, 6)}
+                {identity ? truncateId(identity.userId, 6, 6) : "—"}
                 {copied ? (
                   <CheckIcon className="size-3 text-buy-text" />
                 ) : (
                   <CopyIcon className="size-3" />
                 )}
                 <span className="sr-only">
-                  {copied ? "Address copied" : "Copy address"}
+                  {copied ? "User id copied" : "Copy user id"}
                 </span>
               </button>
             </div>
@@ -155,7 +168,17 @@ export function AccountMenu({
                 <UserIcon className="size-4" />
                 Portfolio
                 <DropdownMenuMeta>
-                  <Delta value={account.data.unrealisedPnl} size="sm" unit="USD" />
+                  {/* Null until Phase 9 derives it from open positions and a
+                      live mark price. An em dash, never a zero. */}
+                  {account.data.unrealisedPnl === null ? (
+                    <span className="text-text-tertiary">—</span>
+                  ) : (
+                    <Delta
+                      value={account.data.unrealisedPnl}
+                      size="sm"
+                      unit="USD"
+                    />
+                  )}
                 </DropdownMenuMeta>
               </Link>
             </DropdownMenuItem>
@@ -171,7 +194,7 @@ export function AccountMenu({
 
             {/* Quiet destructive, matching Button's danger-ghost. Signing out is
                 reversible, so it does not confirm and it is not solid red. */}
-            <DropdownMenuItem intent="danger">
+            <DropdownMenuItem intent="danger" onSelect={() => void signOut()}>
               <LogOutIcon className="size-4" />
               Sign out
             </DropdownMenuItem>

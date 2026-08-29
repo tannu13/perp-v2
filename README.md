@@ -71,7 +71,7 @@ docker compose up -d db redis minio
 2. Create/apply the local database schema before starting the app workloads:
 
 ```bash
-DATABASE_URL=postgresql://perps_user:mysecretpasswordfordb@localhost:5432/perps_db bun --filter @repo/db run db:migrate
+DATABASE_URL=postgresql://perps_user:mysecretpasswordfordb@localhost:5432/perps_db bun run --filter '@repo/db' db:migrate
 ```
 
 3. Start Minikube and enable the NGINX ingress controller:

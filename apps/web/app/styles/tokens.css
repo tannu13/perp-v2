@@ -54,7 +54,7 @@
      read as a buy. Blue carries links, focus, selection, neutral CTAs. */
   --color-primary-300: #7fb4ff;
   --color-primary-400: #4f97ff;
-  --color-primary-500: #2e7cf6;
+  --color-primary-500: #2a72e0;
   --color-primary-600: #1d63d2;
   --color-primary-700: #164ba0;
 
@@ -133,7 +133,7 @@
   --color-surface-inset: #08090a; /* tracks, wells       */
   --color-surface-hover: rgb(255 255 255 / 0.04);
   --color-surface-active: rgb(255 255 255 / 0.08);
-  --color-surface-selected: rgb(46 124 246 / 0.12);
+  --color-surface-selected: rgb(42 114 224 / 0.12);
   --color-surface-disabled: var(--color-neutral-850);
 
   /* --- Text ----------------------------------------------------------------
@@ -188,7 +188,7 @@
   --color-interactive: var(--color-primary-500);
   --color-interactive-hover: var(--color-primary-400);
   --color-interactive-active: var(--color-primary-600);
-  --color-interactive-muted: rgb(46 124 246 / 0.12);
+  --color-interactive-muted: rgb(42 114 224 / 0.12);
   --color-interactive-disabled: var(--color-neutral-700);
 
   /* --- Feedback semantics --------------------------------------------------- */
@@ -199,7 +199,7 @@
   --color-danger: var(--color-danger-500);
   --color-danger-muted: rgb(239 68 68 / 0.12);
   --color-info: var(--color-primary-500);
-  --color-info-muted: rgb(46 124 246 / 0.12);
+  --color-info-muted: rgb(42 114 224 / 0.12);
 
   /* --- Placeholder / skeleton ----------------------------------------------
      A skeleton has to read as "not yet data" against panels that are themselves
@@ -358,7 +358,7 @@
     0 12px 32px -6px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.5);
   --shadow-e4: 0 24px 64px -12px rgb(0 0 0 / 0.7);
 
-  --shadow-focus: 0 0 0 3px rgb(46 124 246 / 0.35);
+  --shadow-focus: 0 0 0 3px rgb(42 114 224 / 0.35);
   --shadow-focus-error: 0 0 0 3px rgb(239 68 68 / 0.35);
   --shadow-glow-buy:
     0 0 0 1px rgb(0 194 120 / 0.4), 0 4px 16px -4px rgb(0 194 120 / 0.3);

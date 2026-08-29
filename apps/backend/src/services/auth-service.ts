@@ -1,6 +1,10 @@
 import { compare, hash } from "bcrypt";
 import { AppError } from "../errors/app-error";
-import { ConflictError, InvalidRequestError } from "../errors/custom-errors";
+import {
+  ConflictError,
+  InvalidRequestError,
+  UnauthorizedError,
+} from "../errors/custom-errors";
 import env from "../env";
 import { createToken } from "../utils/auth";
 import type { TComms } from "./backend-comms";
@@ -36,8 +40,28 @@ export const createAuthService = ({
         .returning()
         .then((res) => res[0]!);
 
-      sendToEngine("init_balance", {
+      /**
+       * Fire-and-forget, and it MUST stay unable to crash the process.
+       *
+       * Signing up should not fail because the engine is slow: every engine
+       * handler lazily creates a missing user anyway, so a dropped
+       * `init_balance` costs nothing but a zero balance appearing on first
+       * read. But this call is deliberately not awaited, and since the engine
+       * transport gained a timeout it can now REJECT — an unhandled rejection
+       * takes the whole API down with it. That is not hypothetical: it killed
+       * the backend during manual testing, turning a slow engine into a total
+       * outage minutes after an unrelated signup.
+       *
+       * Any other unawaited `sendToEngine` call needs the same treatment.
+       */
+      void sendToEngine("init_balance", {
         userId: newUser.id,
+      }).catch((err: unknown) => {
+        console.error(
+          "init_balance failed for",
+          newUser.id,
+          err instanceof Error ? err.message : err,
+        );
       });
 
       return {
@@ -85,5 +109,25 @@ export const createAuthService = ({
     }
   };
 
-  return { signup, signin };
+  /**
+   * The signed-in user's own record. Used by `GET /me`, which exists because
+   * the client cannot read its own httpOnly cookie to find out who it is.
+   */
+  const getUserById = async (userId: string) => {
+    const user = await db.query.users.findFirst({
+      columns: { id: true, username: true, name: true },
+      where: (users, { eq }) => eq(users.id, userId),
+    });
+    if (!user) {
+      // A valid token for a user that no longer exists: treat as unauthorised
+      // so the client clears the session rather than retrying forever.
+      throw new UnauthorizedError(
+        "Session is no longer valid",
+        "TOKEN_INVALID",
+      );
+    }
+    return user;
+  };
+
+  return { signup, signin, getUserById };
 };

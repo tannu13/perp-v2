@@ -3,6 +3,7 @@ import type {
   SelectOrderRecord,
   TOrderStatusesEnum,
 } from "@repo/db/schema";
+import { MARKETS } from "@repo/db/markets";
 
 export type TPositionType = "LONG" | "SHORT";
 export type TOrderType = "market" | "limit";
@@ -204,29 +205,43 @@ export type TStore = {
   lastUpdateId: number;
 };
 
+/**
+ * Market identity and risk limits come from `@repo/db/markets`, which is also
+ * what seeds the `markets` table and what `GET /markets` serves to the browser.
+ *
+ * All three used to keep their own copy. The UUIDs drifting apart meant orders
+ * 404ing and WebSocket topics nothing published to; the leverage caps drifting
+ * apart meant the order ticket offering 20x on ETH while the engine refused
+ * anything above 3x — a rejection the user only discovered after confirming.
+ * Reading one constant is what makes that a compile-time impossibility rather
+ * than a documentation promise.
+ *
+ * Only the seed prices are genuinely engine-local: they are the opening state
+ * of an empty orderbook, not a property of the market.
+ */
 const SUPPORTED_ASSETS = {
   SOL: {
-    asset: "e3289213-372c-44d2-8cc8-2a6eb55b11b1",
+    asset: MARKETS.SOL.id,
     lastTradedPrice: 90,
     indexPrice: 85,
-    allowedLeverage: 30,
+    allowedLeverage: MARKETS.SOL.maxLeverage,
   },
   ETH: {
-    asset: "13931aa2-9054-4e34-ac0f-4a8afad48226",
+    asset: MARKETS.ETH.id,
     lastTradedPrice: 1900,
     indexPrice: 1850,
-    allowedLeverage: 3,
+    allowedLeverage: MARKETS.ETH.maxLeverage,
   },
   BTC: {
-    asset: "e59931c4-c54a-435f-8c57-382fa60fca58",
+    asset: MARKETS.BTC.id,
     lastTradedPrice: 5000,
     indexPrice: 4930,
-    allowedLeverage: 8,
+    allowedLeverage: MARKETS.BTC.maxLeverage,
   },
 } as const;
 export type TSupportedAssets = keyof typeof SUPPORTED_ASSETS;
 
-export function createExchangeStore(backupStore: TStore): TStore {
+export function createExchangeStore(backupStore?: TStore | null): TStore {
   if (backupStore) {
     return backupStore;
   }

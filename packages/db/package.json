@@ -6,13 +6,17 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./markets": "./src/markets.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "bun run src/seed.ts",
+    "test": "bun test",
+    "check-types": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",

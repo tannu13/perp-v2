@@ -17,6 +17,8 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
  */
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SessionProvider } from "@/lib/auth/session-provider";
+import { AccountProvider } from "@/lib/account";
 import "./globals.css";
 
 /**
@@ -53,12 +55,21 @@ export default function RootLayout({
       <body>
         {/* Shared tooltip timing — hovering between adjacent tooltips should
             not restart the open delay each time. */}
-        <TooltipProvider delayDuration={200} skipDelayDuration={400}>
-          {/* Toasts mount at the root because a fill can land while the user is
-              anywhere — including inside a dialog. The viewport is portalled
-              above every other layer for the same reason. */}
-          <ToastProvider>{children}</ToastProvider>
-        </TooltipProvider>
+        {/* Outermost: the 401 interceptor it installs has to outlive anything
+            that can trigger one, and a toast about an expired session is
+            rendered by a provider inside it. */}
+        <SessionProvider>
+          {/* Inside the session: it only fetches for a signed-in user, and it
+              reads `useSession` to know. */}
+          <AccountProvider>
+            <TooltipProvider delayDuration={200} skipDelayDuration={400}>
+              {/* Toasts mount at the root because a fill can land while the user is
+                anywhere — including inside a dialog. The viewport is portalled
+                above every other layer for the same reason. */}
+              <ToastProvider>{children}</ToastProvider>
+            </TooltipProvider>
+          </AccountProvider>
+        </SessionProvider>
       </body>
     </html>
   );

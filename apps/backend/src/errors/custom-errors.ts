@@ -32,3 +32,17 @@ export class UnauthorizedError extends AppError {
     super(message, 401, errorCode);
   }
 }
+
+/**
+ * The dependency is down, not the request. Distinct from a 500 so the frontend
+ * can say "the matching engine is not responding" rather than "something went
+ * wrong", and so a retry is obviously the right response.
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(
+    message = "Service temporarily unavailable",
+    errorCode = "SERVICE_UNAVAILABLE",
+  ) {
+    super(message, 503, errorCode);
+  }
+}

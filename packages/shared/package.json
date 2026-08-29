@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "test": "bun test",
+    "check-types": "tsc --noEmit"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./redis-events": "./src/redis-events.ts"

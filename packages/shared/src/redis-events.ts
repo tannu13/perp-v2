@@ -1,5 +1,8 @@
 import { InsertFillSchema, InsertOrderSchema } from "@repo/db/schema";
 import z from "zod";
+import { MarketDepthSchema } from "./index";
+
+export { MarketDepthSchema };
 
 const EngineSupportedTypes = z.enum([
   "init_balance",
@@ -75,15 +78,6 @@ export const WriterSchema = z.array(
 );
 export type TWriterSchema = z.infer<typeof WriterSchema>;
 
-const PriceAsString = z.string();
-const AvailableQtyAsString = z.string();
-export const MarketDepthSchema = z.object({
-  market: z.string(),
-  lastUpdateId: z.coerce.number(),
-  timestamp: z.coerce.number(),
-  bids: z.array(z.tuple([PriceAsString, AvailableQtyAsString])),
-  asks: z.array(z.tuple([PriceAsString, AvailableQtyAsString])),
-});
 export const WsServerSchema = z.object({
   depth: MarketDepthSchema,
   lastTradedPrice: z.string(),

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { MARKETS, marketBySlug } from "@/lib/markets";
 import { Terminal } from "@/components/terminal/terminal";
+import { RequireSession } from "@/lib/auth/require-session";
 
 export function generateStaticParams() {
   return MARKETS.map((m) => ({ market: m.slug }));
@@ -28,5 +29,9 @@ export default async function TradePage({
   const market = marketBySlug(slug);
   if (!market) notFound();
 
-  return <Terminal market={market} />;
+  return (
+    <RequireSession>
+      <Terminal market={market} />
+    </RequireSession>
+  );
 }

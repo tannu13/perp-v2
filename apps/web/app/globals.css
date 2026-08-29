@@ -131,3 +131,30 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/**
+ * Chrome's autofill overrides the dark theme.
+ *
+ * When Chrome fills a saved credential it applies a UA style the cascade cannot
+ * reach: the input paints `rgb(232, 240, 254)` with black text regardless of
+ * our tokens — pale blue boxes in the middle of a dark sign-in card. Verified in
+ * the browser, not inferred: `:-webkit-autofill` matches and the computed
+ * background is that value rather than `--color-surface-input`.
+ *
+ * `background-color` cannot be overridden on an autofilled input, which is why
+ * this uses the inset box-shadow trick — a shadow large enough to cover the
+ * field paints over the UA background. `-webkit-text-fill-color` is likewise
+ * the only way to reach the text colour.
+ *
+ * Tokens, not literals, so a theme change carries through here too.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface-input) inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  /* The UA also animates the fill in; without this the old colour flashes. */
+  transition: background-color 5000s ease-in-out 0s;
+}

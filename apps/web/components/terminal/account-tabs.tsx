@@ -25,6 +25,7 @@ import {
   WalletIcon,
 } from "@/components/ui";
 import { DepositButton } from "./deposit-dialog";
+import { useAccount } from "@/lib/account";
 
 /**
  * The bottom panel: positions, open orders, fills, balances, order history.
@@ -162,15 +163,14 @@ const ORDER_HISTORY = Array.from({ length: 24 }, (_, i) => {
   };
 });
 
-const BALANCES = [
-  { asset: "USD", total: "2521.00", available: "1958.10", inOrders: "562.90" },
-  { asset: "USDC", total: "12480.55", available: "12480.55", inOrders: "0.00" },
-  { asset: "SOL", total: "146.2040", available: "121.9800", inOrders: "24.2240" },
-  { asset: "BTC", total: "0.4512", available: "0.4062", inOrders: "0.0450" },
-  { asset: "ETH", total: "8.7310", available: "6.4210", inOrders: "2.3100" },
-  { asset: "JUP", total: "18420.00", available: "18420.00", inOrders: "0.00" },
-  { asset: "PYTH", total: "9310.75", available: "8110.75", inOrders: "1200.00" },
-];
+/**
+ * Collateral is a SINGLE balance, not a portfolio of assets.
+ *
+ * This tab used to list USD, USDC, SOL, BTC, ETH, JUP and PYTH. The engine's
+ * `TCollateral` is one `{ available, locked }` pair in an unnamed unit (G14),
+ * so six of those seven rows had no backing data and never would without a
+ * multi-collateral engine. One row, three real numbers.
+ */
 
 /**
  * Order status → badge intent.
@@ -366,9 +366,7 @@ function ClosePositionButton({
               container, so together they overflowed past the dialog edge. */}
           <div className="flex gap-2 *:flex-1">
             <DialogClose asChild>
-              <Button intent="neutral">
-                Keep position
-              </Button>
+              <Button intent="neutral">Keep position</Button>
             </DialogClose>
             {/* Solid danger here — the action is committed at this point. */}
             <Button intent="danger" onClick={() => setOpen(false)}>
@@ -396,6 +394,7 @@ export function AccountTabs({
   market: Market;
   className?: string;
 }) {
+  const account = useAccount();
   const loading = useFirstLoad();
 
   return (
@@ -430,7 +429,16 @@ export function AccountTabs({
         <TabPanel
           value="positions"
           loading={loading}
-          head={["Market", "Size", "Entry", "Mark", "Liq. price", "Margin", "PnL", ""]}
+          head={[
+            "Market",
+            "Size",
+            "Entry",
+            "Mark",
+            "Liq. price",
+            "Margin",
+            "PnL",
+            "",
+          ]}
           isEmpty={POSITIONS.length === 0}
           empty={
             <EmptyState
@@ -441,44 +449,54 @@ export function AccountTabs({
           }
         >
           {POSITIONS.map((p) => (
-              <tr key={p.id} className="hover:bg-surface-hover">
-                <Td first>
-                  <span className="flex items-center gap-2">
-                    <Side side={p.side} size="sm" />
-                    <span className="text-text-primary">{p.market}</span>
-                  </span>
-                </Td>
-                <Td>{p.size}</Td>
-                <Td>{p.entry}</Td>
-                <Td>{p.mark}</Td>
-                <Td className="text-warning">{p.liq}</Td>
-                <Td>
-                  <span className="flex items-center justify-end gap-1.5">
-                    {formatUsd(p.margin)}
-                    <Badge intent="outline" size="sm">
-                      {p.leverage}x
-                    </Badge>
-                  </span>
-                </Td>
-                <Td>
-                  <span className="flex flex-col items-end">
-                    <Delta value={p.pnl} unit="USD" size="sm" />
-                    <Delta value={p.roe} percent size="sm" />
-                  </span>
-                </Td>
-                <Td>
-                  {/* Closing fires a market order and realises PnL — it is not
+            <tr key={p.id} className="hover:bg-surface-hover">
+              <Td first>
+                <span className="flex items-center gap-2">
+                  <Side side={p.side} size="sm" />
+                  <span className="text-text-primary">{p.market}</span>
+                </span>
+              </Td>
+              <Td>{p.size}</Td>
+              <Td>{p.entry}</Td>
+              <Td>{p.mark}</Td>
+              <Td className="text-warning">{p.liq}</Td>
+              <Td>
+                <span className="flex items-center justify-end gap-1.5">
+                  {formatUsd(p.margin)}
+                  <Badge intent="outline" size="sm">
+                    {p.leverage}x
+                  </Badge>
+                </span>
+              </Td>
+              <Td>
+                <span className="flex flex-col items-end">
+                  <Delta value={p.pnl} unit="USD" size="sm" />
+                  <Delta value={p.roe} percent size="sm" />
+                </span>
+              </Td>
+              <Td>
+                {/* Closing fires a market order and realises PnL — it is not
                       reversible, so it confirms. Cancel below does not. */}
-                  <ClosePositionButton position={p} />
-                </Td>
-              </tr>
-            ))}
+                <ClosePositionButton position={p} />
+              </Td>
+            </tr>
+          ))}
         </TabPanel>
 
         <TabPanel
           value="orders"
           loading={loading}
-          head={["Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status", ""]}
+          head={[
+            "Order",
+            "Market",
+            "Side",
+            "Type",
+            "Price",
+            "Qty",
+            "Filled",
+            "Status",
+            "",
+          ]}
           isEmpty={OPEN_ORDERS.length === 0}
           empty={
             <EmptyState
@@ -489,32 +507,32 @@ export function AccountTabs({
           }
         >
           {OPEN_ORDERS.map((o) => (
-              <tr key={o.id} className="hover:bg-surface-hover">
-                <Td first>
-                  <span className="font-mono text-text-tertiary">
-                    {truncateId(o.id)}
-                  </span>
-                </Td>
-                <Td className="text-text-primary">{o.market}</Td>
-                <Td>
-                  <Side side={o.side} size="sm" />
-                </Td>
-                <Td className="text-text-secondary">{o.type}</Td>
-                <Td>{o.price}</Td>
-                <Td>{o.qty}</Td>
-                <Td className="text-text-secondary">{o.filled}</Td>
-                <Td>
-                  <Badge intent={STATUS_INTENT[o.status]} size="sm">
-                    {o.status.replace("_", " ")}
-                  </Badge>
-                </Td>
-                <Td>
-                  <Button intent="danger-ghost" size="sm">
-                    Cancel
-                  </Button>
-                </Td>
-              </tr>
-            ))}
+            <tr key={o.id} className="hover:bg-surface-hover">
+              <Td first>
+                <span className="font-mono text-text-tertiary">
+                  {truncateId(o.id)}
+                </span>
+              </Td>
+              <Td className="text-text-primary">{o.market}</Td>
+              <Td>
+                <Side side={o.side} size="sm" />
+              </Td>
+              <Td className="text-text-secondary">{o.type}</Td>
+              <Td>{o.price}</Td>
+              <Td>{o.qty}</Td>
+              <Td className="text-text-secondary">{o.filled}</Td>
+              <Td>
+                <Badge intent={STATUS_INTENT[o.status]} size="sm">
+                  {o.status.replace("_", " ")}
+                </Badge>
+              </Td>
+              <Td>
+                <Button intent="danger-ghost" size="sm">
+                  Cancel
+                </Button>
+              </Td>
+            </tr>
+          ))}
         </TabPanel>
 
         <TabPanel
@@ -531,27 +549,27 @@ export function AccountTabs({
           }
         >
           {FILLS.map((f) => (
-              <tr key={f.id} className="hover:bg-surface-hover">
-                <Td first className="text-text-tertiary">
-                  {formatTime(f.ts)}
-                </Td>
-                <Td className="text-text-primary">{f.market}</Td>
-                <Td>
-                  <Side side={f.side} size="sm" />
-                </Td>
-                <Td>{f.price}</Td>
-                <Td>{f.qty}</Td>
-                <Td className="text-text-secondary">{f.role}</Td>
-                <Td className="text-text-tertiary">{f.fee}</Td>
-              </tr>
-            ))}
+            <tr key={f.id} className="hover:bg-surface-hover">
+              <Td first className="text-text-tertiary">
+                {formatTime(f.ts)}
+              </Td>
+              <Td className="text-text-primary">{f.market}</Td>
+              <Td>
+                <Side side={f.side} size="sm" />
+              </Td>
+              <Td>{f.price}</Td>
+              <Td>{f.qty}</Td>
+              <Td className="text-text-secondary">{f.role}</Td>
+              <Td className="text-text-tertiary">{f.fee}</Td>
+            </tr>
+          ))}
         </TabPanel>
 
         <TabPanel
           value="balances"
-          loading={loading}
           head={["Asset", "Total", "Available", "In orders"]}
-          isEmpty={BALANCES.length === 0}
+          loading={account.status === "loading"}
+          isEmpty={account.status === "ready" && account.data.equity === "0"}
           empty={
             <EmptyState
               icon={WalletIcon}
@@ -563,24 +581,34 @@ export function AccountTabs({
             />
           }
         >
-          {BALANCES.map((b) => (
-              <tr key={b.asset} className="hover:bg-surface-hover">
-                <Td first className="text-text-primary">
-                  {b.asset}
-                </Td>
-                <Td>
-                  <Num value={b.total} />
-                </Td>
-                <Td>{b.available}</Td>
-                <Td className="text-text-tertiary">{b.inOrders}</Td>
-              </tr>
-            ))}
+          {account.status === "ready" && (
+            <tr className="hover:bg-surface-hover">
+              <Td first className="text-text-primary">
+                USD
+              </Td>
+              <Td>
+                <Num value={account.data.equity} />
+              </Td>
+              <Td>{account.data.available}</Td>
+              <Td className="text-text-tertiary">{account.data.marginUsed}</Td>
+            </tr>
+          )}
         </TabPanel>
 
         <TabPanel
           value="history"
           loading={loading}
-          head={["Time", "Order", "Market", "Side", "Type", "Price", "Qty", "Filled", "Status"]}
+          head={[
+            "Time",
+            "Order",
+            "Market",
+            "Side",
+            "Type",
+            "Price",
+            "Qty",
+            "Filled",
+            "Status",
+          ]}
           isEmpty={ORDER_HISTORY.length === 0}
           empty={
             <EmptyState
@@ -591,30 +619,30 @@ export function AccountTabs({
           }
         >
           {ORDER_HISTORY.map((o) => (
-              <tr key={o.id} className="hover:bg-surface-hover">
-                <Td first className="text-text-tertiary">
-                  {formatTime(o.ts)}
-                </Td>
-                <Td>
-                  <span className="font-mono text-text-tertiary">
-                    {truncateId(o.id)}
-                  </span>
-                </Td>
-                <Td className="text-text-primary">{o.market}</Td>
-                <Td>
-                  <Side side={o.side} size="sm" />
-                </Td>
-                <Td className="text-text-secondary">{o.type}</Td>
-                <Td>{o.price}</Td>
-                <Td>{o.qty}</Td>
-                <Td className="text-text-secondary">{o.filled}</Td>
-                <Td>
-                  <Badge intent={STATUS_INTENT[o.status]} size="sm">
-                    {o.status}
-                  </Badge>
-                </Td>
-              </tr>
-            ))}
+            <tr key={o.id} className="hover:bg-surface-hover">
+              <Td first className="text-text-tertiary">
+                {formatTime(o.ts)}
+              </Td>
+              <Td>
+                <span className="font-mono text-text-tertiary">
+                  {truncateId(o.id)}
+                </span>
+              </Td>
+              <Td className="text-text-primary">{o.market}</Td>
+              <Td>
+                <Side side={o.side} size="sm" />
+              </Td>
+              <Td className="text-text-secondary">{o.type}</Td>
+              <Td>{o.price}</Td>
+              <Td>{o.qty}</Td>
+              <Td className="text-text-secondary">{o.filled}</Td>
+              <Td>
+                <Badge intent={STATUS_INTENT[o.status]} size="sm">
+                  {o.status}
+                </Badge>
+              </Td>
+            </tr>
+          ))}
         </TabPanel>
       </ScrollArea>
     </TabsPrimitive.Root>

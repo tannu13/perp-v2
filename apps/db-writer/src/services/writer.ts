@@ -11,9 +11,25 @@ import type {
   TEngineRequestSchema,
   TEngineResponseSchema,
   TOrderDataForWriterSchema,
+  TWriterSchema,
 } from "@repo/shared/redis-events";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Does this engine reply actually carry rows?
+ *
+ * A reply can carry a `writer` array whose every entry is empty. The engine
+ * builds one unconditionally on a liquidation sweep (`arrayToObjectUtil` always
+ * emits order_inserts / order_updates / fills, empty or not) and the price
+ * poller triggers a sweep once a second per market — so without this guard an
+ * idle exchange opens a transaction and inserts a `processed_events` row about
+ * three times a second. The database this was found on held 4,026 such rows
+ * against 18 orders and 0 fills.
+ */
+export const hasRowsToWrite = (writer: TWriterSchema): boolean =>
+  writer.some((entry) => entry.data.length > 0);
+
 export const createWriter = () => {
   const handleRequest = async (data: TEngineRequestSchema) => {
     if (data.type === "create_order") {
@@ -78,6 +94,11 @@ export const createWriter = () => {
     }
 
     const { writer } = payload.data;
+
+    if (!hasRowsToWrite(writer)) {
+      return;
+    }
+
     const { correlationId } = payload;
 
     // write fills & orders
