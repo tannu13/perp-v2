@@ -11,13 +11,17 @@ import {
 import { cn } from "@/lib/cn";
 import {
   fetchCandles,
-  syntheticCandles,
   INTERVALS,
   type Candle,
   type Interval,
 } from "@/lib/candles";
 import type { Market } from "@/lib/markets";
-import { SegmentedControl, Skeleton, SkeletonRegion } from "@/components/ui";
+import {
+  ErrorState,
+  SegmentedControl,
+  Skeleton,
+  SkeletonRegion,
+} from "@/components/ui";
 
 /**
  * Candles + volume.
@@ -47,9 +51,15 @@ export function PriceChart({
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 
   const [interval, setInterval] = useState<Interval>("1h");
-  const [source, setSource] = useState<"binance" | "offline" | "loading">(
+  /**
+   * `unavailable` replaced `offline`, which used to mean "showing you invented
+   * candles". There is no third state where the chart draws something: either
+   * Binance answered or the pane says it did not.
+   */
+  const [source, setSource] = useState<"binance" | "unavailable" | "loading">(
     "loading",
   );
+  const [reloads, setReloads] = useState(0);
 
   // Create the chart once; data and theme are applied separately.
   useEffect(() => {
@@ -127,7 +137,7 @@ export function PriceChart({
     let cancelled = false;
     setSource("loading");
 
-    const apply = (data: Candle[], kind: "binance" | "offline") => {
+    const apply = (data: Candle[]) => {
       if (cancelled || !candleRef.current || !volumeRef.current) return;
       candleRef.current.setData(data as never);
       volumeRef.current.setData(
@@ -141,18 +151,25 @@ export function PriceChart({
         })) as never,
       );
       chartRef.current?.timeScale().fitContent();
-      setSource(kind);
+      setSource("binance");
     };
 
     fetchCandles(market.binanceSymbol, interval)
-      .then((data) => apply(data, "binance"))
-      // Offline or blocked: fall back rather than showing an empty chart.
-      .catch(() => apply(syntheticCandles(seedFor(market.slug)), "offline"));
+      .then(apply)
+      .catch(() => {
+        // Was a fallback to a generated price series. Nothing here can draw a
+        // candle the source did not send; if the request failed, the pane says
+        // so and offers to try again.
+        if (cancelled) return;
+        candleRef.current?.setData([]);
+        volumeRef.current?.setData([]);
+        setSource("unavailable");
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [market, interval]);
+  }, [market, interval, reloads]);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -164,11 +181,18 @@ export function PriceChart({
           value={interval}
           onValueChange={(v) => setInterval(v as Interval)}
         />
+        {/*
+          The chart plots the INDEX market, not this exchange's own book: there
+          is no OHLC endpoint here and nothing aggregates `fills` into klines,
+          so the series is Binance's. Saying which market a price series belongs
+          to is not optional when the two can differ by a factor of fifty, as
+          they do on a book the E2E suite has been trading at four dollars.
+        */}
         <span className="font-mono text-micro text-text-disabled">
           {source === "binance"
             ? "index · binance"
-            : source === "offline"
-              ? "offline sample"
+            : source === "unavailable"
+              ? "unavailable"
               : "loading…"}
         </span>
       </div>
@@ -178,6 +202,16 @@ export function PriceChart({
             chart instance on every interval change. */}
         <div ref={holder} className="h-full" />
         {source === "loading" && <ChartSkeleton />}
+        {source === "unavailable" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base">
+            <ErrorState
+              size="sm"
+              title="No candles to show"
+              description="The index candles come from Binance's public API and it did not answer. Nothing else here has price history to draw."
+              onRetry={() => setReloads((n) => n + 1)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -212,10 +246,4 @@ function ChartSkeleton() {
       ))}
     </SkeletonRegion>
   );
-}
-
-function seedFor(slug: string) {
-  if (slug.startsWith("BTC")) return 68450;
-  if (slug.startsWith("ETH")) return 3285;
-  return 205;
 }

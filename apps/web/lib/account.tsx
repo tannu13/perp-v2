@@ -12,6 +12,8 @@ import { getBalances } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/errors";
 import { addMoney } from "@/lib/money";
 import { useSession } from "@/lib/auth/session-provider";
+import { useUserFeedSubscription } from "@/lib/user-feed";
+import type { UserEvent } from "@/lib/user-feed-core";
 
 /**
  * The account snapshot: one request, four surfaces.
@@ -21,11 +23,15 @@ import { useSession } from "@/lib/auth/session-provider";
  * before this existed — 2521 in two places, 14380.72 in a third, 1958.10 in a
  * fourth. They now read one snapshot with one `refresh()`.
  *
- * Refreshing is explicit, not polled. Until the private WebSocket channel lands
- * in Phase 13 there is no push for balance changes, so the mutations that move
- * money call `refresh()` themselves: deposit (Phase 6), placing an order
- * (Phase 7), cancelling (Phase 8) and closing a position (Phase 9). A timer
- * here would hide the missing channel instead of exposing it.
+ * Balances arrive by push as of Phase 13. Every engine reply that moves money
+ * ends with a `balance` event carrying the account's collateral in absolute
+ * terms — including a deposit, which is the one balance change with no order
+ * behind it. The four `refresh()` calls the mutations used to make (deposit,
+ * placing an order, cancelling, closing) are gone; what is left is the
+ * snapshot: one fetch on mount, and one on every reconnect of the channel.
+ *
+ * `refresh` itself survives as the retry affordance the header renders on an
+ * error, which is a user asking rather than a mutation compensating.
  */
 
 export type AccountSnapshot = {
@@ -33,15 +39,16 @@ export type AccountSnapshot = {
   equity: string;
   available: string;
   marginUsed: string;
-  /**
-   * Unrealised PnL across all positions.
-   *
-   * Null until Phase 9: it is derived from open positions and a live mark
-   * price, neither of which the frontend has yet. Null renders as an em dash —
-   * a zero here would be a confident lie about someone's money.
-   */
-  unrealisedPnl: number | null;
 };
+
+/*
+ * `unrealisedPnl` used to sit on this snapshot as a permanent `null`, waiting
+ * for Phase 9. Phase 9 did not put a number in it: unrealised PnL is derived
+ * from open positions and a mark, both of which belong to `PositionsProvider`,
+ * and that provider only mounts inside the terminal. The header and the account
+ * menu read `usePositionsOptional()` for it instead, so there is one definition
+ * of the figure and it lives beside the rows it is a sum of.
+ */
 
 export type AccountState =
   | { status: "loading"; data: null; error: null }
@@ -49,10 +56,25 @@ export type AccountState =
   | { status: "error"; data: null; error: string };
 
 type AccountValue = AccountState & {
-  /** Re-read balances. Called after anything that moves money. */
+  /** Re-read balances. The retry affordance, and the channel's resync. */
   refresh: () => Promise<void>;
   /** Alias kept for the header's inline retry affordance. */
   retry: () => void;
+  /**
+   * Apply the free collateral a `POST /onramp` reply reported.
+   *
+   * NOT a refetch, and the distinction is the one this phase is built on: the
+   * deposit response is the engine's own figure, arriving one hop earlier than
+   * the `balance` event that carries the same number. The channel is still the
+   * general answer — it is what makes a deposit on another device show up here
+   * — but a deposit is the one balance change that has to work with the REST
+   * layer alone, because it is how an account gets its first dollar and
+   * everything else in the app is gated on having one.
+   *
+   * `locked` is carried over rather than guessed: an onramp cannot move it,
+   * and the reply does not mention it.
+   */
+  applyDeposit: (available: string) => void;
 };
 
 const AccountContext = createContext<AccountValue | null>(null);
@@ -81,7 +103,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
      */
     if (session.status !== "authed") return;
 
-    setState({ status: "loading", data: null, error: null });
+    /**
+     * A figure already on screen stays there while the request runs.
+     *
+     * This used to flip unconditionally to `loading`, which was harmless when
+     * `load` ran once on mount. It runs on every reconnect of the private
+     * channel now (it is this provider's resync), and blanking the header's
+     * equity to a skeleton each time the socket blinked would be a worse lie
+     * than the stale number it replaced.
+     */
+    setState((prev) =>
+      prev.status === "ready" ? prev : { status: "loading", data: null, error: null },
+    );
 
     try {
       const balances = await getBalances();
@@ -94,7 +127,6 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
           marginUsed: balances.locked,
           // Null propagates rather than falling back to a plausible number.
           equity: equity ?? balances.available,
-          unrealisedPnl: null,
         },
         error: null,
       });
@@ -121,9 +153,65 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     void load();
   }, [session.status, load]);
 
+  /**
+   * The push path.
+   *
+   * A `balance` event is absolute — `available` and `locked` as the engine
+   * holds them after the reply — so this is an assignment, never arithmetic on
+   * what is already here. `equity` is recomputed from the pair by the same
+   * `addMoney` the snapshot uses, so the header can never disagree with the
+   * Balances tab about a number they both call collateral.
+   *
+   * Only the LAST balance event of a batch matters, and folding the array is
+   * how that falls out: one engine reply can move an account's collateral more
+   * than once (a fill that closes a position releases margin and realises PnL),
+   * and only the final figure was ever true.
+   */
+  useUserFeedSubscription({
+    resync: load,
+    onEvents: (events: UserEvent[]) => {
+      const latest = [...events].reverse().find((e) => e.type === "balance");
+      if (!latest) return;
+
+      setState((prev) => {
+        // Before the first snapshot there is nothing to update, and `load` is
+        // already in flight with a newer read than this event.
+        if (prev.status !== "ready") return prev;
+        const equity = addMoney(latest.available, latest.locked);
+        return {
+          status: "ready",
+          data: {
+            available: latest.available,
+            marginUsed: latest.locked,
+            equity: equity ?? latest.available,
+          },
+          error: null,
+        };
+      });
+    },
+  });
+
+  const applyDeposit = useCallback((available: string) => {
+    setState((prev) => {
+      // Nothing to update before the first snapshot, which is already in
+      // flight with a read newer than this reply.
+      if (prev.status !== "ready") return prev;
+      const equity = addMoney(available, prev.data.marginUsed);
+      return {
+        status: "ready",
+        data: {
+          available,
+          marginUsed: prev.data.marginUsed,
+          equity: equity ?? available,
+        },
+        error: null,
+      };
+    });
+  }, []);
+
   const value = useMemo<AccountValue>(
-    () => ({ ...state, refresh: load, retry: () => void load() }),
-    [state, load],
+    () => ({ ...state, refresh: load, retry: () => void load(), applyDeposit }),
+    [state, load, applyDeposit],
   );
 
   return (

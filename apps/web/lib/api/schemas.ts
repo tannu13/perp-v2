@@ -42,6 +42,19 @@ export type AuthResult = z.infer<typeof AuthResultSchema>;
 
 export const SignoutResultSchema = z.object({ ok: z.boolean() });
 
+/**
+ * The WebSocket credential.
+ *
+ * `expiresIn` is parsed and carried even though nothing reads it yet: the
+ * client re-tickets on every connection attempt rather than caching one, so
+ * hardcoding sixty seconds anywhere on this side would be a number free to
+ * drift from the server's.
+ */
+export const WsTicketSchema = z.object({
+  ticket: z.string(),
+  expiresIn: z.number(),
+});
+
 export const BalancesSchema = z.object({
   balances: z.object({
     available: Money,
@@ -147,18 +160,40 @@ export const ClosedPositionsSchema = z.object({
   ),
 });
 
-/** A `fills` row. No `side` and no fee — see G11; both are Phase 10 problems. */
-export const FillRecordSchema = z.object({
+/**
+ * A fill, already rewritten from this account's point of view (Phase 10, G11).
+ *
+ * The raw `fills` row this replaced carried `makerId`/`takerId` and no
+ * direction at all, which left the client to work out which side it had been on
+ * by matching ids against orders it did not necessarily have. The backend joins
+ * both orders now and answers the question once — see
+ * `apps/backend/src/services/fill-view.ts`.
+ *
+ * **`id` is not unique in the list.** A self-trade puts the account on both
+ * sides of one fill and returns both; `id + role` is the key.
+ *
+ * There is no `fee`. No fee exists anywhere in the system — not a column, not
+ * an engine calculation — so the column is gone rather than filled with
+ * `price × qty × 0.0004`. See D4.
+ */
+export const FillViewSchema = z.object({
   id: z.string(),
-  makerId: z.string(),
-  takerId: z.string(),
   marketId: z.string(),
+  /** Null only if the join found no market, which the FK makes impossible. */
+  marketSlug: z.string().nullable(),
+  /** The viewer's own direction, not the row's. */
+  side: z.enum(["LONG", "SHORT"]),
+  role: z.enum(["maker", "taker"]),
+  /** The viewer's order — how order history prices a market order (G29). */
+  orderId: z.string(),
   qty: Money,
   price: Money,
-  makerOrderId: z.string(),
-  takerOrderId: z.string(),
   createdAt: z.string(),
 });
-export type FillRecord = z.infer<typeof FillRecordSchema>;
+export type FillView = z.infer<typeof FillViewSchema>;
 
-export const FillsSchema = z.object({ fills: z.array(FillRecordSchema) });
+export const FillsSchema = z.object({
+  fills: z.array(FillViewSchema),
+  /** Opaque; pass it back as `before`. Null means this was the last page. */
+  nextCursor: z.string().nullable(),
+});

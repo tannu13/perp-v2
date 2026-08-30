@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { TCreateUserSchema } from "../types/auth-types";
 import type { TService } from "../services";
 import { clearSessionCookie, setSessionCookie } from "../utils/session-cookie";
+import { createWsTicket, WS_TICKET_TTL_SECONDS } from "../utils/auth";
 
 /**
  * Authentication.
@@ -56,5 +57,21 @@ export const createAuthController = (services: TService) => {
     return res.status(200).json({ userId: user.id, username: user.username });
   };
 
-  return { signup, signin, signout, me };
+  /**
+   * A ticket for the private WebSocket channel.
+   *
+   * Authenticated by the session cookie like any other route, and the only
+   * thing it hands back is a sixty-second, single-purpose credential — see
+   * `createWsTicket`. The session token itself is never returned in a body;
+   * this endpoint exists precisely so that it does not have to be.
+   *
+   * `expiresIn` is returned so the client can decide to re-ticket rather than
+   * hardcode a number that would silently drift from the server's.
+   */
+  const wsTicket = async (req: Request, res: Response) => {
+    const ticket = createWsTicket(req.userId!);
+    return res.status(200).json({ ticket, expiresIn: WS_TICKET_TTL_SECONDS });
+  };
+
+  return { signup, signin, signout, me, wsTicket };
 };

@@ -18,7 +18,9 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/lib/auth/session-provider";
+import { UserFeedProvider } from "@/lib/user-feed";
 import { AccountProvider } from "@/lib/account";
+import { FillNotifications } from "@/components/chrome/fill-notifications";
 import "./globals.css";
 
 /**
@@ -59,16 +61,29 @@ export default function RootLayout({
             that can trigger one, and a toast about an expired session is
             rendered by a provider inside it. */}
         <SessionProvider>
-          {/* Inside the session: it only fetches for a signed-in user, and it
-              reads `useSession` to know. */}
-          <AccountProvider>
-            <TooltipProvider delayDuration={200} skipDelayDuration={400}>
-              {/* Toasts mount at the root because a fill can land while the user is
-                anywhere — including inside a dialog. The viewport is portalled
-                above every other layer for the same reason. */}
-              <ToastProvider>{children}</ToastProvider>
-            </TooltipProvider>
-          </AccountProvider>
+          {/* The private user channel. Above every provider that reads from it
+              and below the session, because it needs a user id to open a
+              socket at all and it re-opens when that changes.
+
+              App-wide, not terminal-scoped: balances are shown in the header on
+              every page, and a fill can land while the user is anywhere. */}
+          <UserFeedProvider>
+            {/* Inside the session: it only fetches for a signed-in user, and it
+                reads `useSession` to know. */}
+            <AccountProvider>
+              <TooltipProvider delayDuration={200} skipDelayDuration={400}>
+                {/* Toasts mount at the root because a fill can land while the user is
+                  anywhere — including inside a dialog. The viewport is portalled
+                  above every other layer for the same reason. */}
+                <ToastProvider>
+                  {/* Renders nothing. Announces the fills that have no request
+                      behind them — a maker being hit, and a liquidation. */}
+                  <FillNotifications />
+                  {children}
+                </ToastProvider>
+              </TooltipProvider>
+            </AccountProvider>
+          </UserFeedProvider>
         </SessionProvider>
       </body>
     </html>

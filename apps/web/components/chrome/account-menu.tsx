@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatUsd, truncateId } from "@/lib/format";
 import { marginSplit, type AccountState } from "@/lib/account";
 import { useSession } from "@/lib/auth/session-provider";
+import { usePositionsOptional } from "@/lib/positions";
 import {
   Avatar,
   ChevronDownIcon,
@@ -49,6 +50,9 @@ export function AccountMenu({
   account: AccountState & { retry: () => void };
   onDeposit: () => void;
 }) {
+  // Optional for the same reason as the header's: this menu is in the chrome of
+  // pages that mount no `PositionsProvider`. See `usePositionsOptional`.
+  const positions = usePositionsOptional();
   const { identity, signOut } = useSession();
   const [copied, setCopied] = useState(false);
 
@@ -168,13 +172,15 @@ export function AccountMenu({
                 <UserIcon className="size-4" />
                 Portfolio
                 <DropdownMenuMeta>
-                  {/* Null until Phase 9 derives it from open positions and a
-                      live mark price. An em dash, never a zero. */}
-                  {account.data.unrealisedPnl === null ? (
+                  {/* Same source and same rule as the header's Delta: null
+                      whenever the total is not knowable — including on the
+                      pages that mount no `PositionsProvider` at all. An em
+                      dash, never a zero. */}
+                  {positions?.totalUnrealisedPnl == null ? (
                     <span className="text-text-tertiary">—</span>
                   ) : (
                     <Delta
-                      value={account.data.unrealisedPnl}
+                      value={positions.totalUnrealisedPnl}
                       size="sm"
                       unit="USD"
                     />

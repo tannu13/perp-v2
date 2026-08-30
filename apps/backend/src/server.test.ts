@@ -188,6 +188,87 @@ describe("authentication (G6)", () => {
     });
     expect(calls).toHaveLength(0);
   });
+
+  it("refuses a WebSocket ticket as a session credential", async () => {
+    // Both are signed with `JWT_SECRET` and both name the same user, so
+    // without the `typ` check a ticket would be a bearer token for the whole
+    // API. It is minted to be put in a URL — where it lands in proxy logs and
+    // browser history — and the only thing that makes that acceptable is that
+    // it opens exactly one door.
+    const ticket = token(
+      { userId: "11111111-1111-1111-1111-111111111111", typ: "ws" },
+      { expiresIn: 60 },
+    );
+    const res = await request("/equity/balances", {
+      headers: { authorization: `Bearer ${ticket}` },
+    });
+    expect(res.status).toBe(401);
+    expect((await json(res)).code).toBe("TOKEN_INVALID");
+  });
+});
+
+/**
+ * The WebSocket credential (Phase 13).
+ *
+ * ws-server cannot read the session cookie — it is host-only on the API host —
+ * and a browser's WebSocket handshake carries no custom headers. So the
+ * credential has to travel in the URL, and this route exists to make sure the
+ * thing that travels there is not the session token.
+ */
+describe("POST /auth/ws-ticket", () => {
+  it("requires a session", async () => {
+    const res = await request("/ws-ticket", { method: "POST" });
+    expect(res.status).toBe(401);
+    expect((await json(res)).code).toBe("TOKEN_MISSING");
+  });
+
+  it("mints a short-lived, single-purpose ticket for the caller", async () => {
+    const userId = "11111111-1111-1111-1111-111111111111";
+    const res = await request("/ws-ticket", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token({ userId })}` },
+    });
+    expect(res.status).toBe(200);
+
+    const body = (await json(res)) as { ticket: string; expiresIn: number };
+    const decoded = jwt.verify(body.ticket, env.JWT_SECRET) as {
+      userId: string;
+      typ: string;
+      exp: number;
+      iat: number;
+    };
+
+    expect(decoded.userId).toBe(userId);
+    expect(decoded.typ).toBe("ws");
+    // Sixty seconds: long enough for a slow handshake, short enough that a log
+    // scraped an hour later holds nothing usable.
+    expect(decoded.exp - decoded.iat).toBe(60);
+    expect(body.expiresIn).toBe(60);
+  });
+
+  it("never returns the session token itself", async () => {
+    // The reason the whole endpoint exists. A session token in a response body
+    // is a session token in browser JavaScript, and this one lasts seven days
+    // with no revocation.
+    const userId = "11111111-1111-1111-1111-111111111111";
+    const session = token({ userId });
+    const res = await request("/ws-ticket", {
+      method: "POST",
+      headers: { authorization: `Bearer ${session}` },
+    });
+    expect(await res.text()).not.toContain(session);
+  });
+
+  it("does not reach the engine", async () => {
+    calls = [];
+    await request("/ws-ticket", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token({ userId: "11111111-1111-1111-1111-111111111111" })}`,
+      },
+    });
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("response envelope (G7)", () => {

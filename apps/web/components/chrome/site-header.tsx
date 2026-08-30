@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { formatUsd } from "@/lib/format";
 import { useAccount } from "@/lib/account";
 import { useSession } from "@/lib/auth/session-provider";
+import { usePositionsOptional } from "@/lib/positions";
 import { DEFAULT_MARKET } from "@/lib/markets";
 import {
   Button,
@@ -158,12 +159,26 @@ export function SiteHeader({ className }: { className?: string }) {
  *
  * The skeleton is sized to the widest realistic figure rather than the current
  * one, so the number does not shift sideways when it lands.
+ *
+ * **Equity here is collateral — `available + locked` — and the Delta beside it
+ * is unrealised PnL.** They are deliberately two figures rather than one sum.
+ * Folding PnL into equity would make the header disagree with the Balances tab,
+ * which shows the same `equity` as the total of a USD collateral row, and a
+ * collateral row is not the place for a mark-to-market adjustment.
  */
 function EquityReadout({
   account,
 }: {
   account: ReturnType<typeof useAccount>;
 }) {
+  /**
+   * Optional, because this header renders on the landing page and the
+   * design-system pages, and only the terminal mounts `PositionsProvider` —
+   * fanning three position requests out of a marketing page to fill in one
+   * figure would be absurd. Off the terminal the Delta is an em dash, which
+   * says "not known here" rather than "zero".
+   */
+  const positions = usePositionsOptional();
   if (account.status === "loading") {
     return (
       <SkeletonRegion
@@ -204,12 +219,14 @@ function EquityReadout({
           {formatUsd(account.data.equity)}
         </span>
         {/* Delta always prints a sign, so PnL direction survives without hue.
-            Null until Phase 9 derives it from open positions and a live mark
-            price — an em dash, never a zero, which would be a lie about money. */}
-        {account.data.unrealisedPnl === null ? (
+            Null whenever the total is not knowable — no provider here, the
+            positions request still in flight or failed, or a position whose
+            book has no two-sided mid. An em dash, never a zero, which would be
+            a lie about money. */}
+        {positions?.totalUnrealisedPnl == null ? (
           <span className="text-num-sm text-text-tertiary">—</span>
         ) : (
-          <Delta value={account.data.unrealisedPnl} size="sm" />
+          <Delta value={positions.totalUnrealisedPnl} size="sm" />
         )}
       </span>
     </div>

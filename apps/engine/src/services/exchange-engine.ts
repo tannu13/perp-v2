@@ -22,8 +22,12 @@ import type {
 import {
   type TEngineRequestSchema,
   type TOrderDataForWriterSchema,
+  type TTradePrintSchema,
+  type TUserEventSchema,
+  type TUserOrderSchema,
   type TWriterSchema,
   type TWsServerSchema,
+  type TWsUserSchema,
 } from "@repo/shared/redis-events";
 import type { TUploadToS3 } from "./upload-file";
 
@@ -100,8 +104,226 @@ export function createEngine({
     };
   };
 
+  /**
+   * Fills → public prints.
+   *
+   * The only thing a fill does not already know is which of its two accounts
+   * was the aggressor, so the taker's side is passed in by the caller — which
+   * is always in a position to know it: `matchLongOrder` is reached only by a
+   * LONG taker, and a liquidation knows the side of the order it just wrote.
+   *
+   * Everything identifying is dropped here rather than in ws-server. The public
+   * tape needs no authentication, so "no user ids on a print" has to be a
+   * property of the payload the engine emits, not a rule the broadcaster is
+   * trusted to remember.
+   */
+  const tradesFromFills = (
+    fills: FillRecordNumberified[],
+    takerPositionType: TPositionType,
+    ts = Date.now(),
+  ): TTradePrintSchema[] =>
+    fills.map((fill) => ({
+      id: fill.id!,
+      price: `${fill.price}`,
+      qty: `${fill.qty}`,
+      side: takerPositionType === "LONG" ? ("buy" as const) : ("sell" as const),
+      ts,
+    }));
+
   const getUserById = (userId: string) => {
     return store.users.get(userId);
+  };
+
+  /* ------------------------------------------------ the private channel -- */
+
+  /**
+   * Merge one user-event map into another, in place.
+   *
+   * A liquidation sweep produces one map per forced close and they routinely
+   * concern the same account twice — the liquidated user and, on the next
+   * position, a maker who is the same person. Concatenating rather than
+   * replacing is what keeps the second batch from erasing the first.
+   */
+  const mergeUserEvents = (into: TWsUserSchema, from: TWsUserSchema) => {
+    for (const [userId, events] of Object.entries(from)) {
+      if (!events.length) continue;
+      (into[userId] ??= []).push(...events);
+    }
+    return into;
+  };
+
+  /**
+   * An order row as the private channel carries it. Strings, and no Dates.
+   *
+   * **`filledQty` is passed in, never read off `order`.** `order` here is
+   * `normalizedPayload`, which is the Postgres row the backend inserted before
+   * the engine saw it — so its `filledQty` is the `"0"` it was created with and
+   * nothing ever increments it. The executed quantity lives in the match
+   * function's own accumulator, which is what the API reply already reports.
+   *
+   * Reading the row instead would have shipped a sixth instance of the bug
+   * this engine has produced five times (`orders.price` in Phase 7,
+   * `orders.filledQty` in Phase 8, `orders.initialMargin` in Phase 9,
+   * `currentOrder.filledQty` in Phase 10): **one quantity with two
+   * representations, and the wrong one used.** The visible symptom here would
+   * have been a partially filled resting order arriving with
+   * `status: "partially_filled"` beside `filledQty: "0"` — a row that
+   * contradicts itself in two adjacent columns.
+   *
+   * `status` IS read off the row, because the match functions mutate it in
+   * place and it is therefore the engine's own value already.
+   */
+  const userOrderFrom = (
+    order: OrderRecordNumberified,
+    filledQty: number,
+  ): TUserOrderSchema => ({
+    id: order.id,
+    marketId: order.marketId,
+    positionType: order.positionType,
+    orderType: order.orderType,
+    status: order.status,
+    qty: `${order.qty}`,
+    filledQty: `${filledQty}`,
+    price: `${order.price}`,
+    slippage: Number(order.slippage),
+    initialMargin: `${order.initialMargin}`,
+    createdAt: new Date(order.createdAt ?? Date.now()).toISOString(),
+  });
+
+  /**
+   * The two absolute facts every affected account is told at the end of a
+   * reply: what it now holds in this market, and what its collateral now is.
+   *
+   * Both are read out of the store rather than derived from the trade, and
+   * both are sent even when they happen not to have moved. A client that has
+   * to work out whether an event implies a balance change is a second copy of
+   * the engine's accounting, and it would be the copy that is wrong.
+   *
+   * `position: null` is a real answer — the position was closed or netted
+   * flat — and is what removes the row from the Positions tab.
+   */
+  const stateEventsFor = (userId: string, marketId: string): TUserEventSchema[] => {
+    const user = getUserById(userId);
+    if (!user) return [];
+
+    const held = getUserMarketPosition(user.positions, marketId);
+    return [
+      {
+        type: "position",
+        marketId,
+        position: held
+          ? {
+              marketId,
+              type: held.position.type,
+              qty: `${held.position.qty}`,
+              margin: `${held.position.margin}`,
+              averagePrice: `${held.position.averagePrice}`,
+              liquidationPrice: `${held.position.liquidationPrice}`,
+            }
+          : null,
+      },
+      {
+        type: "balance",
+        available: `${user.collateral.available}`,
+        locked: `${user.collateral.locked}`,
+      },
+    ];
+  };
+
+  /**
+   * Everything one match should tell the accounts it touched.
+   *
+   * The taker's side is passed in for the same reason `tradesFromFills` needs
+   * it: a fill row names two accounts and records no direction at all, so
+   * "which side was I on" is knowable only here, inside the match. The maker
+   * is always the mirror of the taker.
+   *
+   * The event order within a user's batch is deliberate — `order.new` before
+   * `order.update` before `fill`, then the two absolute state events last — so
+   * a client applying the batch in order never patches a row it has not
+   * inserted yet, and finishes on the truth rather than on an inference.
+   */
+  const userEventsForMatch = ({
+    marketId,
+    fills,
+    takerSide,
+    orderUpdates,
+    newOrders = [],
+    ts = Date.now(),
+  }: {
+    marketId: string;
+    fills: FillRecordNumberified[];
+    takerSide: TPositionType;
+    orderUpdates: TOrderDataForWriterSchema[];
+    /** Orders that came into existence in this reply, with what they filled. */
+    newOrders?: {
+      order: OrderRecordNumberified;
+      filledQty: number;
+      origin: "user" | "liquidation";
+    }[];
+    ts?: number;
+  }): TWsUserSchema => {
+    const events: TWsUserSchema = {};
+    const push = (userId: string, event: TUserEventSchema) => {
+      (events[userId] ??= []).push(event);
+    };
+    const touched = new Set<string>();
+
+    for (const { order, filledQty, origin } of newOrders) {
+      touched.add(order.userId);
+      push(order.userId, {
+        type: "order.new",
+        order: userOrderFrom(order, filledQty),
+        origin,
+      });
+    }
+
+    for (const update of orderUpdates) {
+      touched.add(update.userId);
+      push(update.userId, {
+        type: "order.update",
+        orderId: update.orderId,
+        marketId,
+        status: update.status,
+        filledQty: `${update.filledQty}`,
+      });
+    }
+
+    for (const fill of fills) {
+      touched.add(fill.makerId);
+      touched.add(fill.takerId);
+
+      push(fill.takerId, {
+        type: "fill",
+        fillId: fill.id!,
+        orderId: fill.takerOrderId,
+        marketId,
+        side: takerSide,
+        role: "taker",
+        price: `${fill.price}`,
+        qty: `${fill.qty}`,
+        ts,
+      });
+      push(fill.makerId, {
+        type: "fill",
+        fillId: fill.id!,
+        orderId: fill.makerOrderId,
+        marketId,
+        side: takerSide === "LONG" ? "SHORT" : "LONG",
+        role: "maker",
+        price: `${fill.price}`,
+        qty: `${fill.qty}`,
+        ts,
+      });
+    }
+
+    for (const userId of touched) {
+      for (const event of stateEventsFor(userId, marketId)) {
+        push(userId, event);
+      }
+    }
+
+    return events;
   };
 
   const getRoudedNumber = (numberToRound: number) => {
@@ -356,6 +578,16 @@ export function createEngine({
         const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
 
         const fill: FillRecordNumberified = {
+          /**
+           * Minted here rather than left to Postgres' `defaultRandom()`.
+           *
+           * The public print carries this id, so the trade on the tape and the
+           * row it becomes in the account's Fills tab are the same identity
+           * rather than two records of one event that nothing can join. It also
+           * gives the tape a stable React key that does not have to be
+           * synthesised from a maker/taker order pair.
+           */
+          id: crypto.randomUUID(),
           makerId: restingOpenOrder.userId,
           takerId: userForCurrentOrder.userId,
           marketId: currentOrder.marketId,
@@ -544,7 +776,22 @@ export function createEngine({
       orderId: currentOrder.id,
       userId: currentOrder.userId,
       status: currentOrder.status,
-      filledQty: currentOrder.filledQty,
+      /**
+       * `filledQtyForCurrentOrder`, NOT `currentOrder.filledQty`.
+       *
+       * `currentOrder` is the row the backend inserted before the engine saw
+       * it, so its `filledQty` is the `"0"` that row was created with and is
+       * never incremented — the executed quantity is accumulated in the local
+       * above, which is what the backend reply and the in-memory open order
+       * both already use. Persisting the row's own field wrote `0` to Postgres
+       * for every order that took liquidity, so an aggressive order came to
+       * rest as `status: "filled", filledQty: 0` — visible the moment Phase 10
+       * put a finished order's Filled column on screen.
+       *
+       * Same shape as the Phase 7, 8 and 9 defects: one quantity with two
+       * representations, and the wrong one persisted.
+       */
+      filledQty: filledQtyForCurrentOrder,
     });
 
     return {
@@ -603,6 +850,8 @@ export function createEngine({
         const availableQty = restingOpenOrder.qty - restingOpenOrder.filledQty;
 
         const fill: FillRecordNumberified = {
+          /** Minted here, not by Postgres — see the LONG match above. */
+          id: crypto.randomUUID(),
           makerId: restingOpenOrder.userId,
           takerId: userForCurrentOrder.userId,
           marketId: currentOrder.marketId,
@@ -789,7 +1038,22 @@ export function createEngine({
       orderId: currentOrder.id,
       userId: currentOrder.userId,
       status: currentOrder.status,
-      filledQty: currentOrder.filledQty,
+      /**
+       * `filledQtyForCurrentOrder`, NOT `currentOrder.filledQty`.
+       *
+       * `currentOrder` is the row the backend inserted before the engine saw
+       * it, so its `filledQty` is the `"0"` that row was created with and is
+       * never incremented — the executed quantity is accumulated in the local
+       * above, which is what the backend reply and the in-memory open order
+       * both already use. Persisting the row's own field wrote `0` to Postgres
+       * for every order that took liquidity, so an aggressive order came to
+       * rest as `status: "filled", filledQty: 0` — visible the moment Phase 10
+       * put a finished order's Filled column on screen.
+       *
+       * Same shape as the Phase 7, 8 and 9 defects: one quantity with two
+       * representations, and the wrong one persisted.
+       */
+      filledQty: filledQtyForCurrentOrder,
     });
 
     return {
@@ -870,7 +1134,22 @@ export function createEngine({
       marketId,
     );
     let isRiskReducingOrder = false;
-    if (!initialMargin) {
+    /**
+     * `Number(initialMargin)`, not `initialMargin`.
+     *
+     * The payload is a Postgres row, so `initialMargin` is a STRING — and the
+     * backend inserts `"0"` when the client omits `equity`, which is exactly
+     * the risk-reducing case this branch exists to catch. `!"0"` is `false`, so
+     * an order with no margin fell straight past every check in here.
+     *
+     * It reached a correct outcome for a close by luck: the `else if` below
+     * catches an opposite-side order against an existing position and zeroes the
+     * margin itself. But the two guarded errors were unreachable — no position
+     * at all produced `leverage = price * qty / 0`, i.e. `Infinity`, and came
+     * back as "Leverage not supported", which sends the caller looking at the
+     * wrong thing entirely.
+     */
+    if (!Number(initialMargin)) {
       if (!existingPositionData) {
         throw new Error(
           `Margin required as there is no open position for this market`,
@@ -953,7 +1232,27 @@ export function createEngine({
       } else {
         entryPrice -= maxSlippageAllowed;
       }
-      normalizedPayload.price = normalizedPayload.slippage;
+
+      /**
+       * The bound the matching loop reads.
+       *
+       * This used to assign `normalizedPayload.slippage` — the percent — which
+       * is why market orders could not fill: `matchLongOrder` matches while
+       * `bestNextPrice <= currentOrder.price`, so with `price` holding `1` no
+       * ask above a dollar was ever reachable and every market order came back
+       * `cancelled` with `filledQty: 0` after its margin had been locked. The
+       * short side had the mirror problem against `>=`.
+       *
+       * Assigning the bounded entry price is what the comment above always
+       * said this did: a market order is a limit order priced at the worst
+       * price the trader has agreed to accept. It also makes the leverage
+       * check below real — it was computing `slippage * qty / margin`, which
+       * meant the cap was not enforced on market orders at all.
+       *
+       * `slippage` itself is untouched, so what the user asked for is still
+       * what is persisted and echoed back.
+       */
+      normalizedPayload.price = entryPrice;
     }
 
     // verify if the margin given is within allowed range for the market
@@ -970,24 +1269,73 @@ export function createEngine({
       user.collateral.locked += normalizedPayload.initialMargin;
     }
 
+    const matchingResp = matchOrder(normalizedPayload, orderbook, user);
+    if (!matchingResp) return null;
+
+    /**
+     * The private channel's payload, built here rather than in ws-server.
+     *
+     * Everything it needs is in scope and nowhere else: the taker's side (a
+     * fill row does not record one), the resting orders that were hit, and —
+     * once `matchOrder` has returned — each affected account's collateral and
+     * position *after* the trade. ws-server could not reconstruct any of it
+     * from the writer payload without reimplementing the netting.
+     *
+     * `origin` distinguishes an order the account placed from one the engine
+     * minted against it. `skipWebSocketPayload` is only ever true on the
+     * liquidation path, which is what makes it the right thing to read here.
+     */
+    const wsUser = userEventsForMatch({
+      marketId,
+      fills: matchingResp.backend?.fills ?? [],
+      takerSide: normalizedPayload.positionType,
+      orderUpdates:
+        matchingResp.writer.find((w) => w.table === "order_updates")?.data ?? [],
+      newOrders: [
+        {
+          order: normalizedPayload,
+          // The accumulator, not the row — see `userOrderFrom`.
+          filledQty: matchingResp.backend?.filledQty ?? 0,
+          origin: skipWebSocketPayload ? "liquidation" : "user",
+        },
+      ],
+    });
+
     if (skipWebSocketPayload) {
-      return matchOrder(normalizedPayload, orderbook, user);
+      return { ...matchingResp, wsUser };
     }
 
+    /**
+     * Built AFTER the match, which is where it always should have been.
+     *
+     * This block used to sit above `matchOrder`, so every broadcast that
+     * followed an order described the book as it was *before* that order
+     * touched it: a resting limit order was published as a level that did not
+     * exist yet, and a crossing trade published the price of the PREVIOUS
+     * trade as `last-traded-price`. The price poller's ~1 Hz sweep republished
+     * the truth a moment later, which is why this never looked broken for
+     * longer than a second and why nothing caught it — but for that second the
+     * terminal showed a book nobody could trade against.
+     *
+     * `lastUpdateId` is bumped here too, so the counter orders frames by when
+     * the book actually changed.
+     */
     store.lastUpdateId++;
     const wsServer = {
       depth: getMarketDepth(marketId),
       lastTradedPrice: `${orderbook.lastTradedPrice}`,
       indexPrice: `${orderbook.indexPrice}`,
+      trades: tradesFromFills(
+        matchingResp.backend?.fills ?? [],
+        normalizedPayload.positionType,
+      ),
     };
-
-    const matchingResp = matchOrder(normalizedPayload, orderbook, user);
-    if (!matchingResp) return null;
 
     return {
       backend: matchingResp.backend,
       writer: matchingResp.writer,
       wsServer,
+      wsUser,
     };
   };
   type TCancelOrderReturnType = {
@@ -1002,25 +1350,31 @@ export function createEngine({
     };
     writer: TWriterSchema;
     wsServer: TWsServerSchema;
+    wsUser: TWsUserSchema;
   };
   const cancelOrder = (order: SelectOrderRecord): TCancelOrderReturnType => {
     // if a risk reducing order was placed earlier, that'd not have the margin required for that as it was identified as risk reducing. but now if the user is cancelling the order that was supposed to be the earlier one with risk. so that should be considered. if that is being cancelled. waaaaiiiiiiiiit, the order isn't cancelled, the position is squared off. this endpoint is though specifically to cancel an order which is not yet position-ized, i.e. not yet matched and thus position is not yet created. so it should be straigt-forward.
     // td::cancel only what is sitting on the order book and not the positions PLUS revert the apt balances
 
-    let orderbookRecord: TBid | undefined;
     const orderbook = store.orderbooks[order.marketId];
     const user = getUserById(order.userId);
     if (!orderbook || !user) {
       throw new Error("Order not found");
     }
-    if (order.positionType === "LONG") {
-      // find the order in bids
 
-      orderbookRecord = orderbook.bids[`${order.price}`];
-    } else {
-      // find the order in asks
-      orderbookRecord = orderbook.asks[`${order.price}`];
-    }
+    /**
+     * The side is chosen ONCE and every later mutation goes through `side`.
+     *
+     * This used to look the level up on the correct side and then unconditionally
+     * `delete orderbook.asks[price]` in the cleanup below — in the LONG branch
+     * too. Cancelling a resting bid therefore left the emptied bid level in the
+     * book and, if an ask happened to sit at the same price, deleted somebody
+     * else's liquidity instead. Holding one reference makes the pairing
+     * structural rather than something the next edit has to remember.
+     */
+    const side = order.positionType === "LONG" ? orderbook.bids : orderbook.asks;
+    const priceLevel = `${order.price}`;
+    const orderbookRecord: TBid | undefined = side[priceLevel];
 
     if (
       !orderbookRecord ||
@@ -1042,15 +1396,26 @@ export function createEngine({
     user.collateral.available += releasedMargin;
     user.collateral.locked -= releasedMargin;
 
+    /**
+     * The quantity coming off the level is the ENGINE's remaining quantity, not
+     * the Postgres row's.
+     *
+     * `order` is the row the backend read before calling us, and its `filledQty`
+     * is only as fresh as db-writer's last pass. Deriving the decrement from it
+     * meant a partially filled resting order subtracted more than it was still
+     * holding, driving `availableQty` negative and tripping the cleanup below
+     * while other users' orders were still sitting on the level.
+     */
+    const remainingQty = openOrder.qty - openOrder.filledQty;
+
     // delete the order
     orderbookRecord.openOrders.splice(orderIndex, 1);
-    const remainingQty = Number(order.qty) - Number(order.filledQty);
     orderbookRecord.availableQty -= remainingQty;
     if (
       orderbookRecord.availableQty <= 0 ||
       orderbookRecord.openOrders.length <= 0
     ) {
-      delete orderbook.asks[`${order.price}`];
+      delete side[priceLevel];
     }
 
     order.status = "cancelled";
@@ -1065,7 +1430,7 @@ export function createEngine({
     return {
       backend: {
         order,
-        cancelledQty: openOrder.qty - openOrder.filledQty,
+        cancelledQty: remainingQty,
         balances: {
           releasedMargin,
           available: user.collateral.available,
@@ -1086,13 +1451,48 @@ export function createEngine({
         },
       ],
       wsServer,
+      /**
+       * A cancel concerns exactly one account and produces no fill, so the
+       * batch is the order's own transition plus the collateral that was just
+       * released. It is pushed even though the canceller already has the HTTP
+       * reply: this account may be signed in on a second device, and the whole
+       * point of the channel is that state does not depend on who asked.
+       */
+      wsUser: userEventsForMatch({
+        marketId: order.marketId,
+        fills: [],
+        takerSide: order.positionType,
+        orderUpdates: [
+          {
+            orderId: order.id,
+            userId: order.userId,
+            filledQty: openOrder.filledQty,
+            status: order.status,
+          },
+        ],
+      }),
     };
   };
 
+  /**
+   * A user the engine has never seen has no positions — that is an answer, not
+   * an error.
+   *
+   * This used to throw "User has no positions", which the backend turns into a
+   * 400 and the browser into a failed panel. The engine's store is in-memory, so
+   * an unknown user is reachable in the ordinary course of things: a restart, or
+   * simply a positions request that lands before the balances request that
+   * creates the row (`get_balances` and `init_balance` both create on read).
+   * Every one of those cases means "no positions", and saying so is both true
+   * and what the caller can act on.
+   *
+   * Deliberately does NOT create the user, unlike `get_balances`: a read of a
+   * list should not have a side effect on the store.
+   */
   const getOpenPositionsForMarket = (userId: string, marketId: string) => {
     const user = getUserById(userId);
     if (!user) {
-      throw new Error("User has no positions");
+      return { backend: { positions: [] } };
     }
 
     const marketPositions = user.positions.filter(
@@ -1104,10 +1504,11 @@ export function createEngine({
     };
   };
 
+  /** Same reasoning as `getOpenPositionsForMarket` above. */
   const getClosedPositionsForMarket = (userId: string, marketId: string) => {
     const user = getUserById(userId);
     if (!user) {
-      throw new Error("User has no positions");
+      return { backend: { closedPositions: [] } };
     }
 
     const marketPositions = user.closedPositions.filter(
@@ -1121,7 +1522,44 @@ export function createEngine({
 
   const liqudationChecks = (asset: TSupportedAssets, price: number) => {
     const marketId = store.supportedAssets[asset];
+    const orderbook = store.orderbooks[marketId];
+
+    /**
+     * The index price, finally assigned.
+     *
+     * `price` is the spot price apps/price-poller just read off Binance, and it
+     * is already what every liquidation below is evaluated against — but until
+     * this line nothing ever wrote it to the book, so `orderbook.indexPrice`
+     * stayed on the value the market was seeded with (85 / 1850 / 4930) for the
+     * whole life of the process. Two things were reading that seed:
+     *
+     *  - the `mark-price` feed, which therefore broadcast a number that had
+     *    never been true of anything (G15). The client's answer was to refuse
+     *    to parse the frame at all;
+     *  - `disperseFundingRate`, whose `(lastTraded − index) / index` was a
+     *    ratio against a constant, so the hourly funding it applied to every
+     *    open position was arithmetic on a made-up denominator.
+     *
+     * It changes nothing about who is liquidated: the loop below compares
+     * against `price` directly and always has.
+     */
+    if (orderbook) orderbook.indexPrice = price;
+
     const allResponses: TMatchOrderFunctionResponse[] = [];
+    /**
+     * A forced close is a real trade and belongs on the public tape. It is
+     * accumulated here rather than inside `arrayToObjectUtil`, because that
+     * helper flattens the responses and by then the side of each liquidating
+     * order — the one thing a print needs and a fill does not carry — is gone.
+     */
+    const liquidationTrades: TTradePrintSchema[] = [];
+    /**
+     * Merged across every forced close in this sweep. One tick can liquidate
+     * several accounts and each of those trades against makers who may
+     * themselves be liquidated later in the same loop, so this is a merge and
+     * not an assignment — see `mergeUserEvents`.
+     */
+    const liquidationUserEvents: TWsUserSchema = {};
 
     for (const user of store.users.values()) {
       const posIndex = user.positions.findIndex(
@@ -1150,8 +1588,45 @@ export function createEngine({
             updatedAt: new Date(),
           };
 
-          const resp = placeOrder(newOrderData, true);
+          /**
+           * One position that cannot be closed must not take the sweep down
+           * with it.
+           *
+           * `placeOrder` throws when the opposite side of the book is empty
+           * ("There are no matches available"), and a liquidation is a market
+           * order against whatever is resting — so an empty book is an ordinary
+           * outcome, not an exceptional one. Unguarded, that throw escaped
+           * `liqudationChecks` and aborted the whole `spot_price_update`:
+           * every other position in the market went unchecked, and the reply
+           * carried no `wsServer` payload, so the depth, last-price and
+           * mark-price feeds all stopped for that market until a tick arrived
+           * with nothing to liquidate. A single stuck position could silence
+           * the public feed indefinitely — which is exactly the failure this
+           * phase is meant to make impossible.
+           *
+           * The position stays open. There is nothing else to do with it: it is
+           * underwater and there is no liquidity to close it into. Leaving it
+           * to the next tick is the honest outcome, and the next tick now
+           * happens.
+           */
+          let resp: ReturnType<typeof placeOrder>;
+          try {
+            resp = placeOrder(newOrderData, true);
+          } catch (error) {
+            console.error(
+              `liquidation skipped for ${marketId}:`,
+              error instanceof Error ? error.message : error,
+            );
+            continue;
+          }
           if (!resp || !resp?.writer) continue;
+          liquidationTrades.push(
+            ...tradesFromFills(
+              resp.backend?.fills ?? [],
+              newOrderData.positionType,
+            ),
+          );
+          if (resp.wsUser) mergeUserEvents(liquidationUserEvents, resp.wsUser);
           resp?.writer.unshift({
             table: "order_inserts",
             data: [
@@ -1185,8 +1660,25 @@ export function createEngine({
             updatedAt: new Date(),
           };
 
-          const resp = placeOrder(newOrderData, true);
+          /** Same guard as the LONG branch above. */
+          let resp: ReturnType<typeof placeOrder>;
+          try {
+            resp = placeOrder(newOrderData, true);
+          } catch (error) {
+            console.error(
+              `liquidation skipped for ${marketId}:`,
+              error instanceof Error ? error.message : error,
+            );
+            continue;
+          }
           if (!resp || !resp?.writer) continue;
+          liquidationTrades.push(
+            ...tradesFromFills(
+              resp.backend?.fills ?? [],
+              newOrderData.positionType,
+            ),
+          );
+          if (resp.wsUser) mergeUserEvents(liquidationUserEvents, resp.wsUser);
           resp?.writer.unshift({
             table: "order_inserts",
             data: [
@@ -1202,7 +1694,6 @@ export function createEngine({
       }
     }
 
-    const orderbook = store.orderbooks[marketId];
     let wsServer: TWsServerSchema | null = null;
     if (orderbook) {
       store.lastUpdateId++;
@@ -1210,6 +1701,7 @@ export function createEngine({
         depth: getMarketDepth(marketId),
         lastTradedPrice: `${orderbook.lastTradedPrice}`,
         indexPrice: `${orderbook.indexPrice}`,
+        trades: liquidationTrades,
       };
     }
 
@@ -1218,6 +1710,7 @@ export function createEngine({
       backend: liquidationRes.backend,
       writer: liquidationRes.writer,
       wsServer,
+      wsUser: liquidationUserEvents,
     };
   };
 
@@ -1390,7 +1883,24 @@ export function createEngine({
         user.collateral.available += amount;
       }
 
-      return { backend: { userId, available: user.collateral.available } };
+      return {
+        backend: { userId, available: user.collateral.available },
+        /**
+         * A deposit is the one balance change with no order and no fill
+         * behind it, so it gets its own one-event batch. Without it the
+         * deposit dialog would still have to refetch — and the account signed
+         * in on a second device would never learn about the money at all.
+         */
+        wsUser: {
+          [userId]: [
+            {
+              type: "balance",
+              available: `${user.collateral.available}`,
+              locked: `${user.collateral.locked}`,
+            },
+          ],
+        } satisfies TWsUserSchema,
+      };
     } else if (type === "create_order") {
       // code to init user if missing
       const { userId } = payload as { userId: string };

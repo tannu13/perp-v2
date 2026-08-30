@@ -16,6 +16,15 @@ export type NumericInputProps = Omit<
   /** Unit shown inside the field — USD, SOL, %. */
   suffix?: string;
   /**
+   * Refuses a decimal point entirely.
+   *
+   * For values whose storage is an integer — slippage is an `integer` column.
+   * Rejecting the keystroke is the honest option: accepting "0.5" and rounding
+   * it on the way to the wire changes a number the user typed and read back in
+   * a confirmation dialog.
+   */
+  integerOnly?: boolean;
+  /**
    * `lg` is for the order ticket specifically: 44px tall with 20px figures.
    * The whole screen is numbers, so the two fields where the user commits money
    * have to outweigh the surrounding readouts. Tables stay at `md`.
@@ -40,6 +49,7 @@ export function NumericInput({
   min,
   max,
   suffix,
+  integerOnly = false,
   inputSize = "md",
   id,
   disabled,
@@ -58,14 +68,15 @@ export function NumericInput({
     const current = Number.parseFloat(value);
     const base = Number.isFinite(current) ? current : 0;
     // Round to the step's precision so 0.1 + 0.2 never surfaces as 0.30000000000000004.
-    const decimals = (String(step).split(".")[1] ?? "").length;
+    const decimals = integerOnly ? 0 : (String(step).split(".")[1] ?? "").length;
     onValueChange(clamp(base + direction * step).toFixed(decimals));
   };
 
   const handleChange = (raw: string) => {
     // Allow empty, digits, one dot. Reject everything else rather than
     // silently coercing, so a typo never becomes a real order value.
-    if (raw === "" || /^\d*\.?\d*$/.test(raw)) onValueChange(raw);
+    const allowed = integerOnly ? /^\d*$/ : /^\d*\.?\d*$/;
+    if (raw === "" || allowed.test(raw)) onValueChange(raw);
   };
 
   return (

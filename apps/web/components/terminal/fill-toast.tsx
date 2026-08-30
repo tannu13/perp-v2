@@ -26,15 +26,35 @@ import { Badge, Side, useToast, type ToastOptions } from "@/components/ui";
  * fact that is actually directional.
  */
 
-export type FillStatus = "filled" | "partial" | "rejected" | "cancelled";
+export type FillStatus =
+  | "filled"
+  | "partial"
+  /** Accepted and resting on the book, nothing matched yet. */
+  | "resting"
+  | "rejected"
+  | "cancelled"
+  /**
+   * A forced close. The account did not place this order — the engine minted
+   * it when the spot index crossed the position's liquidation price — which is
+   * why it needs a word of its own rather than reading as an ordinary fill.
+   *
+   * It reaches the browser only over the private channel (Phase 13); there is
+   * no request whose response could have carried it.
+   */
+  | "liquidated";
 
 export type FillEvent = {
-  orderId: string;
+  /**
+   * Optional because a rejected order has none: the engine refused it before
+   * it became an order, and printing a plausible id would be a fabrication.
+   */
+  orderId?: string;
   side: "LONG" | "SHORT";
   status: FillStatus;
   /** Strings, from the engine, untouched — see the money rule in CLAUDE.md. */
   qty: string;
-  price: string;
+  /** Omitted when no price is true — a market order that matched nothing. */
+  price?: string;
   market: Market;
   /** Engine reason, shown only on a rejection. */
   reason?: string;
@@ -44,13 +64,23 @@ export type FillEvent = {
 const STATUS_LABEL: Record<FillStatus, string> = {
   filled: "Filled",
   partial: "Partially filled",
+  resting: "Order placed",
   rejected: "Rejected",
   cancelled: "Cancelled",
+  liquidated: "Liquidated",
 };
 
 const STATUS_BADGE: Record<FillStatus, "neutral" | "warning" | "danger" | "outline"> = {
   filled: "neutral",
   partial: "warning",
+  // `danger`, which is non-directional — a liquidation can close a LONG or a
+  // SHORT, and the `Side` badge beside it is the only thing in the toast
+  // allowed to be green or red.
+  liquidated: "danger",
+  // Resting is the quietest outcome there is: the order exists and nothing has
+  // happened to it. It borrows `cancelled`'s outline rather than earning a
+  // colour, so only the two outcomes that moved money carry any weight.
+  resting: "outline",
   rejected: "danger",
   cancelled: "outline",
 };
@@ -58,8 +88,10 @@ const STATUS_BADGE: Record<FillStatus, "neutral" | "warning" | "danger" | "outli
 const STATUS_INTENT: Record<FillStatus, ToastOptions["intent"]> = {
   filled: "neutral",
   partial: "neutral",
+  resting: "neutral",
   rejected: "danger",
   cancelled: "neutral",
+  liquidated: "danger",
 };
 
 export function fillToastOptions(
@@ -68,16 +100,20 @@ export function fillToastOptions(
 ): ToastOptions {
   const { market, status } = fill;
   const isRejection = status === "rejected";
+  // A liquidation is not a rejection — it has a price and a quantity, and both
+  // are worth showing — but it earns the warning glyph and the longer dwell
+  // for the same reason: it is the one outcome nobody asked for.
+  const isAlarming = isRejection || status === "liquidated";
 
   return {
     intent: STATUS_INTENT[status],
     // A rejection keeps its glyph — that one is a genuine failure and the
     // triangle is non-chromatic reinforcement. A fill hides it, because the
     // only icon that fits is a green check and green is spoken for.
-    hideIcon: !isRejection,
+    hideIcon: !isAlarming,
     // Fills linger slightly longer than the 5s default: this is the receipt for
     // something that moved money, and it is often read after the fact.
-    duration: isRejection ? 8000 : 6000,
+    duration: isAlarming ? 8000 : 6000,
     title: (
       <span className="flex flex-wrap items-center gap-1.5">
         <Badge intent={STATUS_BADGE[status]} size="sm">
@@ -92,7 +128,7 @@ export function fillToastOptions(
         <span className="tnum text-text-primary">
           {formatNumber(fill.qty, market.sizeDecimals)} {market.base}
         </span>
-        {!isRejection && (
+        {!isRejection && fill.price !== undefined && (
           <>
             <span className="text-text-tertiary">@</span>
             <span className="tnum text-text-primary">
@@ -105,9 +141,11 @@ export function fillToastOptions(
         )}
         {/* Mono is restricted to ids and hashes — this is one of the three
             places in the product that qualifies. */}
-        <span className="font-mono text-micro text-text-disabled">
-          {truncateId(fill.orderId)}
-        </span>
+        {fill.orderId && (
+          <span className="font-mono text-micro text-text-disabled">
+            {truncateId(fill.orderId)}
+          </span>
+        )}
       </span>
     ),
     action: onView

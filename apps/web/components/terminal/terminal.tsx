@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
-import { useMarketFeed } from "@/lib/market-feed";
+import {
+  MarketFeedProvider,
+  TRADES_PUBLISHED,
+  useMarketFeed,
+} from "@/lib/market-feed";
 import { useHasMounted, useIsDesktop } from "@/lib/use-media-query";
-import type { Market } from "@/lib/markets";
+import { MARKETS, type Market } from "@/lib/markets";
+import { HistoryProvider } from "@/lib/history";
+import { OrdersProvider } from "@/lib/orders";
+import { PositionsProvider } from "@/lib/positions";
 import {
   Button,
   Dialog,
@@ -34,6 +41,41 @@ import { TradesFeed } from "./trades-feed";
 const PANEL = "rounded-lg border border-border-subtle bg-surface-raised";
 
 /**
+ * Open orders and positions are both account-wide, so their providers wrap the
+ * whole terminal rather than the tab that renders them: the order ticket has to
+ * be able to trigger a refresh, and the ticket and the tabs are siblings.
+ *
+ * They sit here and not in `app/layout.tsx` because each fans out one request
+ * per market — three requests apiece that only the terminal has any use for.
+ * `RequireSession` is above this, so none of them mount for an anonymous
+ * visitor.
+ *
+ * `HistoryProvider` is the exception to "wraps the terminal so it can be
+ * refreshed": nothing outside its two tabs reads it. It sits here anyway so it
+ * survives a tab switch — history is lazy, and re-mounting it with the panel
+ * would refetch the whole thing every time the user looked away.
+ *
+ * `PositionsProvider` is INSIDE `OrdersProvider` and above `SiteHeader`, and
+ * both of those matter. Closing a position refreshes the open-orders list (a
+ * close that crosses the book fills resting orders), and the header's unrealised
+ * PnL reads the positions context — which is optional there, because the header
+ * also renders on pages that have no provider at all.
+ */
+export function Terminal({ market }: { market: Market }) {
+  return (
+    <MarketFeedProvider market={market}>
+      <OrdersProvider markets={MARKETS}>
+        <PositionsProvider markets={MARKETS}>
+          <HistoryProvider markets={MARKETS}>
+            <TerminalShell market={market} />
+          </HistoryProvider>
+        </PositionsProvider>
+      </OrdersProvider>
+    </MarketFeedProvider>
+  );
+}
+
+/**
  * The terminal shell.
  *
  * ONE component tree, rearranged by CSS. An earlier version branched into two
@@ -50,8 +92,8 @@ const PANEL = "rounded-lg border border-border-subtle bg-surface-raised";
  *   lg    (≥1024) chart + book side by side, ticket docked right
  *   xl    (≥1440) same with wider rails
  */
-export function Terminal({ market }: { market: Market }) {
-  const feed = useMarketFeed(market);
+function TerminalShell({ market }: { market: Market }) {
+  const feed = useMarketFeed();
   const isDesktop = useIsDesktop();
   // Both branches below stay unrendered until hydration completes, so the
   // server and first client tree are identical. See useHasMounted.
@@ -65,17 +107,26 @@ export function Terminal({ market }: { market: Market }) {
   const [ticketOpen, setTicketOpen] = useState(false);
 
   // Seed the limit price from the first tick so the ticket is usable without
-  // typing a price. The feed anchors to spot before emitting, so this is real.
+  // typing a price. Every price the feed emits is now the engine's own last
+  // traded price — there is no anchor step and no placeholder to leak.
   useEffect(() => {
     if (!price && feed.lastPrice !== null) {
       setPrice(feed.lastPrice.toFixed(market.priceDecimals));
     }
   }, [feed.lastPrice, price, market.priceDecimals]);
 
+  // Top of book, for sizing a market order — see the props on OrderForm.
+  const num = (value: string | undefined) => {
+    const parsed = value === undefined ? NaN : Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
   const ticket = (
     <OrderForm
       market={market}
       lastPrice={feed.lastPrice}
+      bestBid={num(feed.depth?.bids[0]?.[0])}
+      bestAsk={num(feed.depth?.asks[0]?.[0])}
       price={price}
       onPriceChange={setPrice}
     />
@@ -215,7 +266,10 @@ export function Terminal({ market }: { market: Market }) {
                 depth={feed.depth}
                 lastPrice={feed.lastPrice}
                 prevPrice={feed.prevPrice}
-                change={feed.stats?.change ?? null}
+                // Still null after Phase 12: no 24h source exists, and the
+                // figure the ladder used to show was the simulator's own
+                // random walk. See the market bar for the reasoning (D6).
+                change={null}
                 market={market}
                 onPriceSelect={(p) => setPrice(p.toFixed(market.priceDecimals))}
               />
@@ -231,6 +285,7 @@ export function Terminal({ market }: { market: Market }) {
                 trades={feed.trades}
                 market={market}
                 source={feed.source}
+                available={TRADES_PUBLISHED}
               />
             </div>
           </ScrollArea>

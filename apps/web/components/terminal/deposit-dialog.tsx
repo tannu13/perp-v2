@@ -66,9 +66,23 @@ export function DepositDialog({
     setSubmitError(undefined);
 
     try {
-      await onramp(amount);
-      // The engine has moved the money; re-read rather than guessing locally.
-      await account.refresh();
+      const result = await onramp(amount);
+      /**
+       * The reply's own figure, applied — not a re-read.
+       *
+       * The engine also ends an onramp reply with a `balance` event on the
+       * private channel (the one balance change in the system with no order
+       * behind it), which is what makes this deposit show up on the same
+       * account's other devices. But a deposit is how an account gets its
+       * first dollar and every other surface in the app is gated on having
+       * one, so it must not be the one thing that stops working when
+       * ws-server does. `POST /onramp` answers with the new available
+       * collateral synchronously; using it costs nothing and invents nothing.
+       *
+       * The dialog still closes only after the request resolves, so a failed
+       * deposit is never mistaken for a successful one.
+       */
+      account.applyDeposit(result.available);
       onOpenChange(false);
       setAmount("");
     } catch (err) {

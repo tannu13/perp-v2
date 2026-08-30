@@ -14,6 +14,7 @@ import {
   OnrampResultSchema,
   OpenPositionsSchema,
   OrdersSchema,
+  WsTicketSchema,
 } from "./schemas";
 
 /**
@@ -97,6 +98,25 @@ export function me(opts: Opts = {}) {
     schema: AuthResultSchema,
     // A 401 here is "not signed in", not "signed out" — see the option's note.
     notifyAuthFailure: false,
+    ...opts,
+  });
+}
+
+/**
+ * A credential for the private WebSocket channel (Phase 13).
+ *
+ * The session token is httpOnly on the API host, so JavaScript cannot read it,
+ * and a WebSocket handshake carries no custom headers — the credential has to
+ * go in the URL. What goes there is a sixty-second, `typ: "ws"` ticket the API
+ * itself refuses, so a copy of it in a proxy log opens nothing a minute later.
+ *
+ * POST despite reading nothing: it mints a credential, and a GET would be
+ * cacheable, prefetchable, and in browser history with its body.
+ */
+export function getWsTicket(opts: Opts = {}) {
+  return apiRequest("/ws-ticket", {
+    method: "POST",
+    schema: WsTicketSchema,
     ...opts,
   });
 }
@@ -207,9 +227,28 @@ export function getClosedPositions(marketId: string, opts: Opts = {}) {
 
 /* ----------------------------------------------------------------- fills -- */
 
-/** Account-wide and unpaginated — see G11. Phase 10 narrows both. */
-export function getFills(opts: Opts = {}) {
-  return apiRequest("/fills", { schema: FillsSchema, ...opts }).then(
-    (r) => r.fills,
-  );
+/**
+ * The account's fills, newest first, with the side the account was on.
+ *
+ * Every parameter is optional and the route still defaults to account-wide, but
+ * it is no longer unbounded (G11): the server caps `limit` at 500 and answers
+ * with a `nextCursor` to pass back as `before`.
+ *
+ * Returns the envelope rather than just the rows, unlike the other list
+ * endpoints — the cursor is the half the caller cannot reconstruct.
+ */
+export function getFills(
+  params: { marketId?: string; limit?: number; before?: string } = {},
+  opts: Opts = {},
+) {
+  const query = new URLSearchParams();
+  if (params.marketId) query.set("marketId", params.marketId);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.before) query.set("before", params.before);
+
+  const search = query.toString();
+  return apiRequest(`/fills${search ? `?${search}` : ""}`, {
+    schema: FillsSchema,
+    ...opts,
+  });
 }

@@ -64,6 +64,32 @@ export function formatTime(ts: number | string | Date): string {
   return d.toLocaleTimeString("en-GB", { hour12: false });
 }
 
+/**
+ * Date and time, for tables that span more than one session.
+ *
+ * `formatTime` alone is right for the trades feed, where everything on screen
+ * happened in the last few minutes. It is wrong for fill and order history: an
+ * order placed at 14:02 yesterday and one placed at 14:02 today print
+ * identically, and there is nothing in the row to tell them apart.
+ *
+ * Day, short month and 24-hour local time — the same `en-GB` conventions
+ * `formatTime` already uses, so the two do not disagree within one table. No
+ * year: the column is already the widest thing in the row, and an exchange
+ * whose history spans years needs a date filter, not four more characters.
+ */
+export function formatDateTime(ts: number | string | Date): string {
+  const d = ts instanceof Date ? ts : new Date(ts);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 /** Countdown as MM:SS or HH:MM:SS, for the funding interval. */
 export function formatCountdown(msRemaining: number): string {
   if (msRemaining < 0) msRemaining = 0;

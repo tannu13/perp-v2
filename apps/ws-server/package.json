@@ -9,10 +9,12 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/jsonwebtoken": "^9.0.10"
   },
   "dependencies": {
     "@repo/shared": "workspace:*",
+    "jsonwebtoken": "^9.0.3",
     "redis": "^6.0.0",
     "zod": "^4.4.3"
   },

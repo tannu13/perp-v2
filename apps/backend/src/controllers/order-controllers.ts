@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import type { TCreateUserSchema } from "../types/auth-types";
 import type { TService } from "../services";
-import type { TOnRampSchema } from "../types/order-types";
+import type { TFillsQuerySchema, TOnRampSchema } from "../types/order-types";
 import type { TCreateOrderSchema } from "@repo/shared";
 
 export const createOrderController = (services: TService) => {
@@ -65,7 +65,15 @@ export const createOrderController = (services: TService) => {
 
   const getFills = async (req: Request, res: Response) => {
     const userId = req.userId!;
-    const response = await services.getFills(userId);
+    // `validate("query", …)` writes to `req.validated`, not `req.query` —
+    // Express 5 makes the latter a getter. Same read as `getDepth` below.
+    const { marketId, limit, before } = (req.validated?.query ??
+      {}) as TFillsQuerySchema;
+    const response = await services.getFills(userId, {
+      marketId,
+      limit,
+      before,
+    });
     return res.status(200).json(response);
   };
 

@@ -47,35 +47,16 @@ export async function fetchCandles(
   }));
 }
 
-/**
- * Deterministic offline candles, used when the network is unavailable so the
- * terminal still renders something honest rather than an empty chart.
+/*
+ * `syntheticCandles` was here.
+ *
+ * It generated 240 hourly candles from a seeded random walk — its own linear
+ * congruential generator, which is why Phase 11's `Math.random` grep across
+ * `apps/web/lib` came back empty while an invented price series was still being
+ * drawn on the terminal. The chart fell back to it whenever the klines request
+ * failed, labelled "offline sample", and a labelled invention is still an
+ * invention: a candlestick series is read as history, and the label is four
+ * words in the corner of it.
+ *
+ * Deleted in Phase 12. A failed klines request now says so — see `PriceChart`.
  */
-export function syntheticCandles(seed: number, count = 240): Candle[] {
-  const out: Candle[] = [];
-  let price = seed;
-  const now = Math.floor(Date.now() / 1000);
-  let rng = 42;
-  const rand = () => {
-    rng = (rng * 1103515245 + 12345) % 2147483648;
-    return rng / 2147483648;
-  };
-
-  for (let i = count; i > 0; i--) {
-    const open = price;
-    const move = (rand() - 0.5) * seed * 0.012;
-    const close = Math.max(seed * 0.5, open + move);
-    const high = Math.max(open, close) * (1 + rand() * 0.004);
-    const low = Math.min(open, close) * (1 - rand() * 0.004);
-    out.push({
-      time: now - i * 3600,
-      open,
-      high,
-      low,
-      close,
-      volume: rand() * 900 + 100,
-    });
-    price = close;
-  }
-  return out;
-}

@@ -16,9 +16,9 @@ describe("ValidFeeds", () => {
     ]);
   });
 
-  it("still lists `trades`, which nothing publishes to yet", () => {
-    // Deliberate: subscribing succeeds and no message ever arrives. The
-    // publisher lands in Phase 12; until then this is a documented dead feed.
+  it("lists `trades`, which now has a publisher", () => {
+    // Phase 11 subscribed to a feed nothing wrote to. Phase 12's publisher is
+    // in `createHandler`, and what it puts on the topic is asserted there.
     expect(ValidFeeds).toContain("trades");
   });
 });

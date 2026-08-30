@@ -30,7 +30,11 @@ test("a new account starts empty, and a deposit moves every surface", async ({
   await expect(equity).toBeVisible();
 
   // The order ticket agrees.
-  await expect(page.getByText("Available").first()).toBeVisible();
+  // `exact`, and it matters: `getByText` with a string is a case-insensitive
+  // SUBSTRING match, so a bare "Available" also matches any panel whose empty
+  // state happens to contain the word — which one briefly did, and `.first()`
+  // then resolved to a hidden pane rather than the ticket.
+  await expect(page.getByText("Available", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Deposit", exact: true }).click();
   await page.getByLabel("Amount", { exact: true }).fill("500");

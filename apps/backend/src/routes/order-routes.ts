@@ -2,7 +2,7 @@ import { Router } from "express";
 import { validate } from "../middlewares/validate";
 import { CreateUserSchema } from "../types/auth-types";
 import type { TController } from "../controllers";
-import { OnRampSchema } from "../types/order-types";
+import { FillsQuerySchema, OnRampSchema } from "../types/order-types";
 import { authenticate } from "../middlewares/authenticate";
 import { CreateOrderSchema } from "@repo/shared";
 import z from "zod";
@@ -61,7 +61,12 @@ export const createOrderRouter = (controller: TController) => {
     controller.getOrdersForMarket,
   );
 
-  orderRouter.get("/fills", authenticate, controller.getFills);
+  orderRouter.get(
+    "/fills",
+    authenticate,
+    validate("query", FillsQuerySchema),
+    controller.getFills,
+  );
 
   /**
    * Public. The depth ladder is the first thing on the terminal and must render

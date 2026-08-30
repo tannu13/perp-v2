@@ -20,6 +20,7 @@ export function TradesFeed({
   trades,
   market,
   source,
+  available = true,
   className,
 }: {
   trades: Trade[];
@@ -31,6 +32,19 @@ export function TradesFeed({
    * even on a market that had genuinely gone quiet.
    */
   source: FeedState["source"];
+  /**
+   * Whether the trades feed publishes at all.
+   *
+   * It does now — Phase 12 made the engine emit a print per fill and ws-server
+   * relay it (G16). Before that, ws-server accepted a subscription to
+   * `feed:{marketId}:trades` and nothing ever wrote to it, so an empty tape was
+   * a permanent condition and "trades appear here the moment the book crosses"
+   * was a promise the system could not keep. The prop stays because the two
+   * empty states are different claims and only one of them can be true at a
+   * time; it is passed `TRADES_PUBLISHED` rather than read here so the pane
+   * tells the truth by itself if that ever goes back to false.
+   */
+  available?: boolean;
   className?: string;
 }) {
   return (
@@ -44,7 +58,14 @@ export function TradesFeed({
       {/* Overlay scrollbar: a native one appearing as prints stream in would
           narrow the content box and reflow every row beneath it. */}
       <ScrollArea className="min-h-0 flex-1">
-        {trades.length === 0 && source === "connecting" ? (
+        {trades.length === 0 && !available ? (
+          <EmptyState
+            size="sm"
+            icon={ListIcon}
+            title="No public trade tape"
+            description="This exchange does not publish trades yet. Your own fills are in the Fills tab."
+          />
+        ) : trades.length === 0 && source === "connecting" ? (
           <SkeletonRegion label={`Loading ${market.slug} trades`}>
             <SkeletonRows rows={12} columns={3} className="px-2" />
           </SkeletonRegion>

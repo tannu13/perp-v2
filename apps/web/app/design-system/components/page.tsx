@@ -751,6 +751,31 @@ export default function ComponentsPage() {
               Fire partial
             </Button>
           </Row>
+          <Row label="Resting">
+            <Button
+              intent="neutral"
+              size="sm"
+              onClick={() =>
+                toast(
+                  fillToastOptions({
+                    orderId: "sol-usd-6c02fd15",
+                    side: "LONG",
+                    status: "resting",
+                    qty: "2.00",
+                    price: "198.40",
+                    market: DEFAULT_MARKET,
+                  }),
+                )
+              }
+            >
+              Fire resting
+            </Button>
+            <span className="max-w-[36ch] text-caption text-text-tertiary">
+              A limit order that matched nothing. The quietest outcome the
+              engine has, so it takes the outline badge — nothing has happened
+              to this order yet.
+            </span>
+          </Row>
           <Row label="Rejected">
             <Button
               intent="neutral"
@@ -774,6 +799,34 @@ export default function ComponentsPage() {
             <span className="max-w-[36ch] text-caption text-text-tertiary">
               The one fill toast that keeps a glyph — a failure is not a
               direction, and the triangle carries it without hue.
+            </span>
+          </Row>
+          <Row label="Liquidated">
+            <Button
+              intent="neutral"
+              size="sm"
+              onClick={() =>
+                toast(
+                  fillToastOptions({
+                    orderId: "sol-usd-b41e77c0",
+                    side: "LONG",
+                    status: "liquidated",
+                    qty: "6.00",
+                    price: "188.12",
+                    market: DEFAULT_MARKET,
+                  }),
+                )
+              }
+            >
+              Fire liquidation
+            </Button>
+            <span className="max-w-[36ch] text-caption text-text-tertiary">
+              The only order in the system nobody placed. It keeps the glyph and
+              the longer dwell for the same reason a rejection does, and takes{" "}
+              <code className="font-mono">danger</code> — non-directional,
+              because a liquidation closes a LONG or a SHORT and the{" "}
+              <code className="font-mono">Side</code> badge beside it is the
+              only thing in the toast allowed to be green or red.
             </span>
           </Row>
           <Row label="Status intents">

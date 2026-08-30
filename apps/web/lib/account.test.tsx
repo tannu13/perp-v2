@@ -79,7 +79,6 @@ function Probe() {
       <span data-testid="equity">{account.data?.equity ?? "-"}</span>
       <span data-testid="available">{account.data?.available ?? "-"}</span>
       <span data-testid="margin">{account.data?.marginUsed ?? "-"}</span>
-      <span data-testid="pnl">{String(account.data?.unrealisedPnl)}</span>
       <span data-testid="error">{account.error ?? "-"}</span>
       <button onClick={() => account.retry()}>retry</button>
     </div>
@@ -116,15 +115,13 @@ describe("AccountProvider", () => {
     expect(screen.getByTestId("equity").textContent).toBe("2521.00");
   });
 
-  it("reports unrealised PnL as null, never zero", async () => {
-    balances = { available: "10", locked: "0" };
-    renderProbe();
-    await waitFor(() =>
-      expect(screen.getByTestId("status").textContent).toBe("ready"),
-    );
-    // A zero here would be a confident lie until Phase 9 can derive it.
-    expect(screen.getByTestId("pnl").textContent).toBe("null");
-  });
+  /*
+   * "reports unrealised PnL as null, never zero" used to live here. Phase 9
+   * moved the figure off this snapshot entirely — it is derived from open
+   * positions and a mark, and now lives in `PositionsProvider`. The
+   * never-a-zero rule is asserted in `position-math.test.ts` instead, against
+   * the function that computes it.
+   */
 
   it("surfaces a failure as an error state, not an empty balance", async () => {
     balances = "fail";
@@ -173,7 +170,6 @@ describe("marginSplit", () => {
         equity: "2521.00",
         available: "1958.10",
         marginUsed: "562.90",
-        unrealisedPnl: null,
       }),
     ).toEqual({ used: 562.9, free: 1958.1 });
   });
