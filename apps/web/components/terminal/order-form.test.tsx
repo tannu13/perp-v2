@@ -269,6 +269,63 @@ describe("submitting an order", () => {
     );
   });
 
+  /**
+   * An engine timeout is not a rejection, and the ticket must not call it one.
+   *
+   * `POST /order` inserts the row and pushes it onto the Redis stream before
+   * the engine ever sees it, so a 503 `ENGINE_TIMEOUT` means the order may be
+   * resting — or filling — right now. "Rejected" is a claim the client was
+   * never given, and the obvious response to a rejection is to place the order
+   * again, which is how one order becomes two.
+   */
+  it("says NOT CONFIRMED, not rejected, when the engine stops answering", async () => {
+    orderReply = {
+      ok: false,
+      status: 503,
+      body: {
+        code: "ENGINE_TIMEOUT",
+        message: "The matching engine is not responding",
+      },
+    };
+    await openTicket();
+    await submit("2");
+
+    await screen.findByText("Not confirmed");
+    expect(screen.queryByText("Rejected")).toBeNull();
+    // And it says where the answer will actually appear.
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(/Check Open orders before placing it again/).length,
+      ).toBeGreaterThanOrEqual(1),
+    );
+  });
+
+  it("keeps an infrastructure failure off the Quantity field", async () => {
+    /**
+     * The rejection above lands on the Quantity input on purpose: every reason
+     * the ENGINE gives is answered by changing the size or the price. "The
+     * matching engine is not responding" is answered by neither, and an error
+     * on that input would send the user to edit a number that was never wrong.
+     * §7.4 routes infrastructure failures to a panel-level message instead.
+     */
+    orderReply = {
+      ok: false,
+      status: 503,
+      body: {
+        code: "ENGINE_TIMEOUT",
+        message: "The matching engine is not responding",
+      },
+    };
+    await openTicket();
+    await submit("2");
+
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent(/matching engine is not responding/i);
+
+    const quantity = screen.getByLabelText(/quantity/i);
+    expect(quantity).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("sends the wire payload the schema describes", async () => {
     await openTicket();
     await submit("2");

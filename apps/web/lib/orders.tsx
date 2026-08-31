@@ -16,6 +16,7 @@ import type { Market } from "@/lib/markets";
 import { useSession } from "@/lib/auth/session-provider";
 import { useUserFeedSubscription } from "@/lib/user-feed";
 import {
+  isResting,
   reduceOpenOrders,
   type UserEvent,
   type UserOrder,
@@ -134,6 +135,22 @@ export function OrdersProvider({
   /** Read inside `load` without making every market change re-create it. */
   const hasRows = useRef(false);
 
+  /**
+   * Cancels currently in flight, and whether the channel finished the order
+   * out from under one. Phase 14's race audit (§7.3, "submit then immediately
+   * cancel") found this.
+   *
+   * The cancel is optimistic, so the row is already off screen when the DELETE
+   * is sent — which means an `order.update` saying the order FILLED arrives
+   * while there is no row for the reducer to remove, and is correctly a no-op.
+   * If the DELETE then fails (it will: the engine cannot cancel an order that
+   * has already filled) the restore would put back a resting row for an order
+   * that no longer exists, and nothing would take it away again until the next
+   * reconnect. The map is what lets the failure path know the difference
+   * between "the cancel was refused" and "the order finished first".
+   */
+  const cancelsInFlight = useRef(new Map<string, { finished: boolean }>());
+
   const load = useCallback(async () => {
     // A balances-style guard: requesting while anonymous 401s, and a 401 is what
     // the interceptor turns into a sign-out and a redirect.
@@ -172,7 +189,7 @@ export function OrdersProvider({
       setState({ status: "ready", orders: merged, error: null });
     } catch (err) {
       if (mine !== generation.current) return;
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
 
       hasRows.current = false;
       setState({
@@ -248,7 +265,19 @@ export function OrdersProvider({
         if (prev.status !== "ready") return prev;
 
         let rows = prev.orders;
-        for (const event of events) rows = reduceOpenOrders(rows, event, toRow);
+        for (const event of events) {
+          // Watched before the reducer sees it: for an order whose row is
+          // optimistically gone the reducer has nothing to do, and this is the
+          // only place the transition is observable at all.
+          if (
+            event.type === "order.update" &&
+            !isResting(event.status) &&
+            cancelsInFlight.current.has(event.orderId)
+          ) {
+            cancelsInFlight.current.get(event.orderId)!.finished = true;
+          }
+          rows = reduceOpenOrders(rows, event, toRow);
+        }
         if (rows === prev.orders) return prev;
         return { ...prev, orders: [...rows].sort(byNewest) };
       });
@@ -265,6 +294,8 @@ export function OrdersProvider({
        * exactly where it was.
        */
       let removed: OpenOrder | undefined;
+      const watch = { finished: false };
+      cancelsInFlight.current.set(orderId, watch);
       setState((prev) => {
         if (prev.status !== "ready") return prev;
         removed = prev.orders.find((o) => o.id === orderId);
@@ -286,10 +317,20 @@ export function OrdersProvider({
         setState((prev) => {
           if (prev.status !== "ready" || !removed) return prev;
           if (prev.orders.some((o) => o.id === orderId)) return prev;
+          /**
+           * The order finished while the cancel was in flight, so the refusal
+           * is correct and the row must stay gone. Restoring it would put a
+           * resting order on screen that the engine has already filled — the
+           * one failure mode an optimistic removal can produce that the user
+           * cannot see, because a restored row looks exactly like a row that
+           * never left.
+           */
+          if (watch.finished) return prev;
           return { ...prev, orders: [...prev.orders, removed].sort(byNewest) };
         });
         throw err;
       } finally {
+        cancelsInFlight.current.delete(orderId);
         setCancelling((prev) => prev.filter((id) => id !== orderId));
       }
     },

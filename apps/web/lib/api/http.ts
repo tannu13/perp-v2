@@ -62,6 +62,28 @@ export function setAuthFailureHandler(handler: AuthFailureHandler | null) {
   onAuthFailure = handler;
 }
 
+/**
+ * The session scope: one signal every authenticated request is linked to.
+ *
+ * Phase 14. A terminal has five tables, a balance read and a ws-ticket in
+ * flight at once, and when the session expires the server answers all of them
+ * with a 401. The interceptor above collapses the *reporting* into one toast
+ * and one redirect — but each request still resolves on its own, and each
+ * provider still catches its own failure. Aborting the scope means the ones
+ * that had not answered yet never do: they reject with `CANCELLED`, which
+ * every provider treats as "nothing to say" (`ApiError.isSilent`).
+ *
+ * It is replaced rather than reused after an abort, because the very next
+ * thing a signed-out user does is sign in again — on a permanently aborted
+ * controller that request would never leave.
+ */
+let sessionScope = new AbortController();
+
+export function abortSessionRequests() {
+  sessionScope.abort();
+  sessionScope = new AbortController();
+}
+
 /** Test seam: lets a suite assert the de-duplication and then reset it. */
 export function resetAuthFailureLatch() {
   authFailureInFlight = false;
@@ -72,6 +94,10 @@ function notifyAuthFailureHandler(route?: string) {
   authFailureInFlight = true;
   try {
     onAuthFailure?.(route);
+    // After the handler, not before: the handler is what turns this into the
+    // one toast and the one redirect, and it must run even if a listener on an
+    // aborted request throws on its way out.
+    abortSessionRequests();
   } finally {
     // Released on the next tick so the burst of concurrent 401s that share a
     // screen collapses into one, while a later, genuinely new failure still
@@ -107,6 +133,39 @@ export type RequestOptions<T> = {
   notifyAuthFailure?: boolean;
 };
 
+/**
+ * Classifies a request that never produced an answer.
+ *
+ * Three ways to get here and they are not interchangeable. A timeout, a dead
+ * network and a deliberate abandonment all surface as an AbortError or a
+ * TypeError; only which signal fired tells them apart, and the session scope
+ * has to be checked FIRST — its abort also aborts the per-request controller,
+ * so `controller.signal.aborted` is true for all three.
+ */
+function transportError(
+  path: string,
+  controller: AbortController,
+  scope: AbortController | null,
+): ApiError {
+  if (scope?.signal.aborted) {
+    return new ApiError({
+      status: 0,
+      code: CLIENT_ERROR_CODES.CANCELLED,
+      message: "The request was cancelled because the session ended.",
+      route: path,
+    });
+  }
+  const aborted = controller.signal.aborted;
+  return new ApiError({
+    status: 0,
+    code: aborted ? CLIENT_ERROR_CODES.TIMEOUT : CLIENT_ERROR_CODES.NETWORK,
+    message: aborted
+      ? "The request took too long. Check your connection and try again."
+      : "Could not reach the server. Check your connection and try again.",
+    route: path,
+  });
+}
+
 export async function apiRequest<T>(
   path: string,
   {
@@ -126,6 +185,22 @@ export async function apiRequest<T>(
   // must still cancel the request, so both are honoured.
   const onExternalAbort = () => controller.abort();
   signal?.addEventListener("abort", onExternalAbort);
+
+  /**
+   * The session scope, captured now.
+   *
+   * Captured rather than read at rejection time because `abortSessionRequests`
+   * REPLACES the controller: by the time this request's `catch` runs, the
+   * module-level one is a fresh, un-aborted instance and the reason for the
+   * abort would have been lost.
+   *
+   * Only authenticated requests join it. `GET /markets` and `GET /depth` work
+   * signed out and must keep working while somebody signs in again — the
+   * ladder is what prices the order they will place.
+   */
+  const scope = auth ? sessionScope : null;
+  const onScopeAbort = () => controller.abort();
+  scope?.signal.addEventListener("abort", onScopeAbort);
 
   const headers: Record<string, string> = { accept: "application/json" };
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -149,24 +224,27 @@ export async function apiRequest<T>(
       // server-side, where there is no cookie jar to send.
       credentials: "include",
     });
-  } catch (err) {
-    // A timeout and a dead network both surface as AbortError/TypeError here;
-    // only the deadline we set distinguishes them.
-    const aborted = controller.signal.aborted;
-    throw new ApiError({
-      status: 0,
-      code: aborted ? CLIENT_ERROR_CODES.TIMEOUT : CLIENT_ERROR_CODES.NETWORK,
-      message: aborted
-        ? "The request took too long. Check your connection and try again."
-        : "Could not reach the server. Check your connection and try again.",
-      route: path,
-    });
+  } catch {
+    throw transportError(path, controller, scope);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", onExternalAbort);
+    scope?.signal.removeEventListener("abort", onScopeAbort);
   }
 
-  const payload = await readJson(response);
+  /**
+   * The body is a second place the request can be abandoned: `fetch` resolves
+   * once the headers are in, and an abort between then and the last byte
+   * rejects here rather than above. Before Phase 14 that rejection escaped as
+   * a raw `AbortError` — not an `ApiError` at all, so nothing downstream could
+   * classify it.
+   */
+  let payload: unknown;
+  try {
+    payload = await readJson(response);
+  } catch {
+    throw transportError(path, controller, scope);
+  }
 
   if (!response.ok) {
     const error = toApiError(response.status, payload, path);

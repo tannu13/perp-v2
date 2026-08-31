@@ -6,6 +6,7 @@ import type { FeedState, Trade } from "@/lib/market-feed";
 import type { Market } from "@/lib/markets";
 import {
   EmptyState,
+  ErrorState,
   ListIcon,
   ScrollArea,
   SkeletonRegion,
@@ -69,6 +70,21 @@ export function TradesFeed({
           <SkeletonRegion label={`Loading ${market.slug} trades`}>
             <SkeletonRows rows={12} columns={3} className="px-2" />
           </SkeletonRegion>
+        ) : trades.length === 0 &&
+          (source === "reconnecting" || source === "disconnected") ? (
+          /*
+            Phase 14. "No prints yet" is a claim about the MARKET — nothing has
+            traded — and an empty tape on a dead socket is not evidence for it.
+            The tape is push-only and never backfilled, so a client that was
+            not connected simply did not see what happened; saying the market
+            was quiet would be inventing the one fact this pane exists to
+            report.
+          */
+          <ErrorState
+            size="sm"
+            title="Trades unavailable"
+            description="The market data feed is not reachable. Prints are not backfilled, so anything that trades while it is down will not appear here."
+          />
         ) : trades.length === 0 ? (
           <EmptyState
             size="sm"

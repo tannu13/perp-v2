@@ -222,7 +222,7 @@ export function PositionsProvider({
       setState({ status: "ready", data: { entries, marks }, error: null });
     } catch (err) {
       if (mine !== generation.current) return;
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
 
       hasRows.current = false;
       setState({

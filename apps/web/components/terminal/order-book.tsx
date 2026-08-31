@@ -3,11 +3,12 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
-import type { Depth, DepthLevel } from "@/lib/market-feed";
+import type { Depth, DepthLevel, FeedState } from "@/lib/market-feed";
 import type { Market } from "@/lib/markets";
 import {
   Delta,
   EmptyState,
+  ErrorState,
   LayersIcon,
   Seam,
   SkeletonRegion,
@@ -127,6 +128,7 @@ export function OrderBook({
   lastPrice,
   prevPrice,
   change,
+  source,
   market,
   onPriceSelect,
   rows = 11,
@@ -136,6 +138,13 @@ export function OrderBook({
   lastPrice: number | null;
   prevPrice: number | null;
   change: number | null;
+  /**
+   * Needed to tell a book that has not arrived yet from one that is not
+   * coming. Without it the only thing distinguishing them is time, and a
+   * skeleton that shimmers forever is a promise the transport has already
+   * given up on. Phase 14.
+   */
+  source: FeedState["source"];
   market: Market;
   onPriceSelect: (price: number) => void;
   rows?: number;
@@ -175,8 +184,28 @@ export function OrderBook({
    * The skeleton renders the same row count at the same `--size-row`, above and
    * below the seam, so the seam does not jump when the first snapshot lands.
    */
-  const connecting = depth === null;
-  const empty = !connecting && bids.length === 0 && asks.length === 0;
+  /**
+   * Four states now, and the fourth is the Phase 14 addition.
+   *
+   *   depth === null, socket coming up   no snapshot yet. A shimmering ladder
+   *                                      is the truth here.
+   *   depth === null, socket down        the snapshot is not coming: the
+   *                                      socket failed and the REST fallback
+   *                                      `MarketFeedProvider` tries alongside
+   *                                      it failed too. This used to shimmer
+   *                                      indefinitely, which claims data is on
+   *                                      its way when nothing is asking for it
+   *                                      except a backoff timer.
+   *   depth, no levels                   the book really is empty.
+   *   levels                             the ladder.
+   *
+   * The skeleton renders the same row count at the same `--size-row`, above and
+   * below the seam, so the seam does not jump when the first snapshot lands.
+   */
+  const down = source === "reconnecting" || source === "disconnected";
+  const unavailable = depth === null && down;
+  const connecting = depth === null && !down;
+  const empty = depth !== null && bids.length === 0 && asks.length === 0;
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -236,6 +265,17 @@ export function OrderBook({
             icon={LayersIcon}
             title="No resting orders"
             description="Nothing is quoted on either side of this market yet."
+          />
+        )}
+        {unavailable && (
+          /* No retry button: the feed is already retrying on its own backoff
+             and a second, manual path into the same transport would be a
+             button that does nothing the app is not doing anyway. The status
+             dot in the market bar carries the same fact continuously. */
+          <ErrorState
+            size="sm"
+            title="No order book"
+            description="The market data feed is not reachable. Reconnecting — the ladder will fill in as soon as it answers."
           />
         )}
         {bids.map((row) => (

@@ -32,6 +32,18 @@ export type FillStatus =
   /** Accepted and resting on the book, nothing matched yet. */
   | "resting"
   | "rejected"
+  /**
+   * The request left and no answer came back — an engine timeout, or a dead
+   * network. Phase 14.
+   *
+   * NOT a rejection, and the difference is the whole point of the state:
+   * `POST /order` inserts the row and pushes it onto the stream before the
+   * engine sees it, so a 503 `ENGINE_TIMEOUT` means the order may match a
+   * second later. "Rejected" would be the client stating an outcome it was
+   * never told. This says what is actually known — nothing — and points at the
+   * place the answer will appear.
+   */
+  | "unknown"
   | "cancelled"
   /**
    * A forced close. The account did not place this order — the engine minted
@@ -66,6 +78,7 @@ const STATUS_LABEL: Record<FillStatus, string> = {
   partial: "Partially filled",
   resting: "Order placed",
   rejected: "Rejected",
+  unknown: "Not confirmed",
   cancelled: "Cancelled",
   liquidated: "Liquidated",
 };
@@ -82,6 +95,9 @@ const STATUS_BADGE: Record<FillStatus, "neutral" | "warning" | "danger" | "outli
   // colour, so only the two outcomes that moved money carry any weight.
   resting: "outline",
   rejected: "danger",
+  // `warning`, not `danger`: nothing has failed. The order may well be resting
+  // on the book. Non-directional either way — see the rule at the top.
+  unknown: "warning",
   cancelled: "outline",
 };
 
@@ -90,6 +106,7 @@ const STATUS_INTENT: Record<FillStatus, ToastOptions["intent"]> = {
   partial: "neutral",
   resting: "neutral",
   rejected: "danger",
+  unknown: "warning",
   cancelled: "neutral",
   liquidated: "danger",
 };
@@ -100,10 +117,12 @@ export function fillToastOptions(
 ): ToastOptions {
   const { market, status } = fill;
   const isRejection = status === "rejected";
+  /** No price and no order id are true for either of these. */
+  const isUnresolved = isRejection || status === "unknown";
   // A liquidation is not a rejection — it has a price and a quantity, and both
   // are worth showing — but it earns the warning glyph and the longer dwell
   // for the same reason: it is the one outcome nobody asked for.
-  const isAlarming = isRejection || status === "liquidated";
+  const isAlarming = isUnresolved || status === "liquidated";
 
   return {
     intent: STATUS_INTENT[status],
@@ -128,7 +147,7 @@ export function fillToastOptions(
         <span className="tnum text-text-primary">
           {formatNumber(fill.qty, market.sizeDecimals)} {market.base}
         </span>
-        {!isRejection && fill.price !== undefined && (
+        {!isUnresolved && fill.price !== undefined && (
           <>
             <span className="text-text-tertiary">@</span>
             <span className="tnum text-text-primary">
@@ -137,7 +156,13 @@ export function fillToastOptions(
           </>
         )}
         {fill.reason && (
-          <span className="text-danger-400">· {fill.reason}</span>
+          <span
+            className={
+              status === "unknown" ? "text-warning" : "text-danger-400"
+            }
+          >
+            · {fill.reason}
+          </span>
         )}
         {/* Mono is restricted to ids and hashes — this is one of the three
             places in the product that qualifies. */}
@@ -150,11 +175,11 @@ export function fillToastOptions(
     ),
     action: onView
       ? {
-          label: isRejection ? "View order" : "View position",
+          label: isUnresolved ? "View order" : "View position",
           // Radix requires this: a screen-reader user cannot race the timeout,
           // so the alt text has to describe a durable route to the same place.
-          altText: isRejection
-            ? "Open the orders tab to review the rejected order"
+          altText: isUnresolved
+            ? "Open the orders tab to review the order"
             : "Open the positions tab to view this position",
           onClick: onView,
         }

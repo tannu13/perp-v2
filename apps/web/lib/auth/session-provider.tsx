@@ -47,6 +47,20 @@ export type SessionValue = {
   signingOut: boolean;
   /** Null unless `status === "authed"`. */
   identity: SessionIdentity | null;
+  /**
+   * Counts sessions that ENDED without being asked to.
+   *
+   * 0 until the interceptor fires. It is a counter rather than a boolean
+   * because the same tab can expire twice — sign in, expire, sign in, expire —
+   * and a boolean that is already true announces the second one to nobody.
+   *
+   * The announcement itself is not made here. `SessionProvider` sits ABOVE
+   * `ToastProvider` in the root layout (it has to: the interceptor it installs
+   * must outlive anything that can trigger a 401), so it cannot call
+   * `useToast`. `SessionNotice` renders inside the toast provider, watches this
+   * number and raises exactly one toast per increment.
+   */
+  expiredCount: number;
   signIn: (input: { username: string; password: string }) => Promise<void>;
   signUp: (input: {
     username: string;
@@ -80,6 +94,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [identity, setIdentity] = useState<SessionIdentity | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [expiredCount, setExpiredCount] = useState(0);
 
   // Read inside callbacks that must not re-subscribe when the status changes.
   const statusRef = useRef(status);
@@ -172,6 +187,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (statusRef.current === "anon") return;
       clearLocally();
 
+      // Bumped before the redirect so the toast is queued by the time the
+      // sign-in page paints — the notice lives above the route and survives it.
+      setExpiredCount((n) => n + 1);
+
       const here = `${window.location.pathname}${window.location.search}`;
       const target = here.startsWith(SIGN_IN_PATH)
         ? SIGN_IN_PATH
@@ -183,8 +202,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [clearLocally, router]);
 
   const value = useMemo<SessionValue>(
-    () => ({ status, identity, signingOut, signIn, signUp, signOut }),
-    [status, identity, signingOut, signIn, signUp, signOut],
+    () => ({
+      status,
+      identity,
+      signingOut,
+      expiredCount,
+      signIn,
+      signUp,
+      signOut,
+    }),
+    [status, identity, signingOut, expiredCount, signIn, signUp, signOut],
   );
 
   return (

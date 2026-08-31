@@ -220,11 +220,32 @@ function TabPanel({
 function ClosePositionButton({ position }: { position: OpenPosition }) {
   const [open, setOpen] = useState(false);
   const positions = usePositions();
-  const { toast } = useToast();
+
+  /**
+   * The refusal, rendered INSIDE the dialog. This is D11.
+   *
+   * It used to be a toast, and the toast was invisible to the people most
+   * likely to need it: the dialog stays open on a failure — deliberately, so
+   * the obvious next action is the button already under the cursor — and Radix
+   * marks everything outside an open dialog `aria-hidden`. The toast viewport
+   * lives at the app root, so the engine's own words were painted, readable,
+   * and out of the accessibility tree, on the one action in this app that
+   * realises money. The Phase 9 spec that could not see it either is what
+   * found it.
+   *
+   * Inside the dialog it is in the tree, it is where the eye already is, and
+   * `role="alert"` on `ErrorState` announces it without moving focus off the
+   * retry.
+   */
+  const [failure, setFailure] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
 
   const inFlight = positions.closing.includes(position.marketId);
 
   const onClose = async () => {
+    setFailure(null);
     try {
       await positions.close(position);
       /**
@@ -239,19 +260,35 @@ function ClosePositionButton({ position }: { position: OpenPosition }) {
        * it is.
        */
       setOpen(false);
+      setFailure(null);
     } catch (err) {
-      // Already becoming a sign-out and a redirect; a toast on the way out is
-      // noise. Same rule the ticket and Cancel both follow.
-      if (err instanceof ApiError && err.isAuthFailure) return;
-      // The dialog stays open: the position is untouched and the obvious next
-      // action — try again — is the button they are already looking at.
-      toast({
-        intent: "danger",
-        title: "Could not close position",
-        // The engine's own words. "There are no matches available" tells the
-        // user something true and actionable; a generic line does not.
-        description: rejectionMessage(err),
-      });
+      // Already becoming a sign-out and a redirect; reporting it here as well
+      // is noise. Same rule the ticket and Cancel both follow.
+      if (err instanceof ApiError && err.isSilent) return;
+
+      /**
+       * Three failures, and only one of them means the position is untouched.
+       *
+       * A rejection is the engine having decided ("There are no matches
+       * available"): nothing happened, and trying again is reasonable. An
+       * engine timeout or a dead network is the opposite — the request left
+       * and no answer came back, so the close may be executing right now, and
+       * "try again" could flatten the position twice. Saying "Could not close"
+       * for that case would be a claim the client cannot make.
+       */
+      setFailure(
+        err instanceof ApiError && err.isOutcomeUnknown
+          ? {
+              title: "Close not confirmed",
+              description: `${err.message} This close may still have gone through — check your positions before trying again.`,
+            }
+          : {
+              title: "Could not close position",
+              // The engine's own words. "There are no matches available" tells
+              // the user something true and actionable; a generic line does not.
+              description: rejectionMessage(err),
+            },
+      );
     }
   };
 
@@ -261,7 +298,15 @@ function ClosePositionButton({ position }: { position: OpenPosition }) {
         Close
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          // A dismissed dialog must not reopen still holding the last attempt's
+          // refusal — the book has moved on and so has the reason.
+          if (!next) setFailure(null);
+          setOpen(next);
+        }}
+      >
         <DialogContent>
           <DialogTitle>Close {position.market.slug} position?</DialogTitle>
           <DialogDescription>
@@ -301,6 +346,17 @@ function ClosePositionButton({ position }: { position: OpenPosition }) {
               </dd>
             </div>
           </dl>
+
+          {failure && (
+            /* `size="sm"` keeps the dialog from growing past the viewport on a
+               phone; the message is one line and the retry is the button
+               below, so this one carries no `onRetry` of its own. */
+            <ErrorState
+              size="sm"
+              title={failure.title}
+              description={failure.description}
+            />
+          )}
 
           {/* `*:flex-1` splits the row evenly. `fullWidth` (w-full) cannot be
               used here: two w-full items in a flex row each claim 100% of the
@@ -351,14 +407,26 @@ function CancelOrderButton({ order }: { order: OpenOrder }) {
     } catch (err) {
       // A 401 is already becoming a sign-out and a redirect; a toast on the way
       // out is noise. Same rule the order ticket follows.
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
+      /**
+       * Same three-way split as the close, and the same reason.
+       *
+       * The row has already been put back by `useOrders().cancel` — that is
+       * what makes the optimism safe — but "the order is still resting" is a
+       * statement about the book, and after an engine timeout the client does
+       * not know whether the cancel landed. The restored row is the honest
+       * default; the words have to admit it might be wrong.
+       */
+      const unknown = err instanceof ApiError && err.isOutcomeUnknown;
       toast({
         intent: "danger",
-        title: "Could not cancel order",
+        title: unknown ? "Cancel not confirmed" : "Could not cancel order",
         description:
-          err instanceof ApiError
-            ? err.message
-            : "The order is still resting on the book.",
+          err instanceof ApiError && err.isOutcomeUnknown
+            ? `${err.message} The order is shown as it was — it may still have been cancelled.`
+            : err instanceof ApiError
+              ? err.message
+              : "The order is still resting on the book.",
       });
     }
   };
@@ -697,6 +765,24 @@ export function AccountTabs({
           value="balances"
           head={["Asset", "Total", "Available", "In orders"]}
           loading={account.status === "loading"}
+          /*
+           * The one tab that had no error branch (Phase 14 audit). A failed
+           * balances read left `loading` false, `isEmpty` false — it is
+           * guarded on `status === "ready"` — and so rendered the table with
+           * no rows in it: a header row over nothing, which reads as an
+           * account holding no collateral. That is a claim about someone's
+           * money made out of a request that failed.
+           */
+          error={
+            account.status === "error" ? (
+              <ErrorState
+                title="Couldn't load balances"
+                description="Your collateral is unchanged — this is only the view."
+                detail={account.error}
+                onRetry={account.retry}
+              />
+            ) : null
+          }
           isEmpty={account.status === "ready" && account.data.equity === "0"}
           empty={
             <EmptyState

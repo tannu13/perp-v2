@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber, formatUsd } from "@/lib/format";
 import type { Market } from "@/lib/markets";
 import {
+  AlertTriangleIcon,
   Button,
   Checkbox,
   Dialog,
@@ -107,6 +108,18 @@ export function OrderForm({
   const [submitting, setSubmitting] = useState(false);
   /** The engine's own reason for refusing the last submission. */
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /**
+   * An infrastructure failure, kept apart from `submitError`.
+   *
+   * `submitError` renders on the Quantity field, and that placement is
+   * deliberate: every reason the ENGINE gives is answered by changing the size
+   * or the price. "The matching engine is not responding" is answered by
+   * neither, and an error on the quantity input would send the user to edit a
+   * number that was never wrong. §7.4 routes infrastructure failures to a
+   * panel-level message instead, which is what this is; the retry is the Buy
+   * button directly under it.
+   */
+  const [stalled, setStalled] = useState<string | null>(null);
   const fillToast = useFillToast();
 
   // The ticket outlives a market switch in some layouts; the cap must not.
@@ -143,7 +156,10 @@ export function OrderForm({
    * margin" stops being true the moment the quantity changes, and a stale
    * server error under a field the user has since fixed is worse than none.
    */
-  const clearRejection = () => setSubmitError(null);
+  const clearRejection = () => {
+    setSubmitError(null);
+    setStalled(null);
+  };
   const changeQty = (next: string) => {
     clearRejection();
     setQty(next);
@@ -177,6 +193,7 @@ export function OrderForm({
 
     setSubmitting(true);
     setSubmitError(null);
+    setStalled(null);
 
     try {
       const result = await createOrder(buildOrderPayload(draft));
@@ -211,15 +228,34 @@ export function OrderForm({
     } catch (err) {
       // A 401 is already being turned into a sign-out and a redirect by the
       // interceptor; a rejection toast on the way out would be noise.
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
 
-      const reason = rejectionMessage(err);
-      setSubmitError(reason);
+      /**
+       * A refusal and a silence are different facts and are reported as
+       * different outcomes (Phase 14).
+       *
+       * `POST /order` inserts the row and pushes it onto the Redis stream
+       * before the engine sees it, so a 503 `ENGINE_TIMEOUT` — or a network
+       * failure after the request left — means the order may be resting, or
+       * filling, right now. Announcing "Rejected" there would be the client
+       * stating an outcome nobody told it, on the exact surface where being
+       * wrong costs money: the obvious response to a rejection is to place the
+       * order again.
+       */
+      const unknown = err instanceof ApiError && err.isOutcomeUnknown;
+      const reason =
+        err instanceof ApiError && err.isOutcomeUnknown
+          ? `${err.message} Check Open orders before placing it again.`
+          : rejectionMessage(err);
+
+      if (unknown) setStalled(reason);
+      else setSubmitError(reason);
       setConfirming(false);
       fillToast({
-        // No order id: the engine refused this before it became an order.
+        // No order id either way: a rejected order never became one, and an
+        // unanswered request never told us the id of the one it may have made.
         side,
-        status: "rejected",
+        status: unknown ? "unknown" : "rejected",
         qty,
         market,
         reason,
@@ -388,6 +424,22 @@ export function OrderForm({
           </span>
         </div>
       </div>
+
+      {stalled && (
+        /*
+          Above the button, not below it: it is the reason not to press the
+          button again yet. `role="alert"` so it is announced — the toast that
+          carries the same words is at the app root and a screen-reader user
+          working through the ticket has no reason to be there.
+        */
+        <p
+          role="alert"
+          className="flex gap-1.5 rounded-md border border-border-strong bg-surface-inset px-2.5 py-2 text-caption text-text-secondary"
+        >
+          <AlertTriangleIcon className="mt-px size-3.5 shrink-0 text-warning" />
+          {stalled}
+        </p>
+      )}
 
       <Button
         intent={side === "LONG" ? "buy" : "sell"}

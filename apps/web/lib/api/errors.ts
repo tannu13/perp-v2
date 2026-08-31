@@ -22,6 +22,17 @@ export const CLIENT_ERROR_CODES = {
   SCHEMA: "SCHEMA",
   /** A non-2xx whose body we could not parse at all. */
   UNKNOWN: "UNKNOWN",
+  /**
+   * Abandoned on purpose, so there is nothing to tell the user.
+   *
+   * Phase 14: an expired session aborts every other request that was in
+   * flight when the 401 landed. Without a code of its own each of those five
+   * tables would render its own error panel on the way to `/signin` — five
+   * failures reported for one cause, on a screen the user is being navigated
+   * off. `TIMEOUT` cannot carry it: both arrive here as an `AbortError` and
+   * only the signal that fired distinguishes them.
+   */
+  CANCELLED: "CANCELLED",
 } as const;
 
 export type FieldErrors = Record<string, string>;
@@ -58,6 +69,54 @@ export class ApiError extends Error {
       this.code === "TOKEN_EXPIRED" ||
       this.code === "TOKEN_INVALID" ||
       this.code === "TOKEN_MISSING"
+    );
+  }
+
+  /** The request was abandoned by us — see `CANCELLED`. */
+  get isCancelled() {
+    return this.code === CLIENT_ERROR_CODES.CANCELLED;
+  }
+
+  /**
+   * Nothing to show the user.
+   *
+   * The session ended, or this request was abandoned because it did. Both are
+   * already being reported once — a toast and a redirect from the interceptor
+   * — and every call site that catches an error has the same question to ask
+   * before it renders anything of its own.
+   */
+  get isSilent() {
+    return this.isAuthFailure || this.isCancelled;
+  }
+
+  /**
+   * The engine did not answer in time (§3.4's 503).
+   *
+   * Distinct from a rejection and from a network error, and the distinction is
+   * about *outcome*, not about tone: a rejection means the order does not
+   * exist, a network failure means it may never have been sent, and this means
+   * the backend accepted it, pushed it onto the stream, and stopped waiting.
+   * The order may still match. Nothing that reports one of these may claim to
+   * know which happened.
+   */
+  get isEngineDown() {
+    return this.code === "ENGINE_TIMEOUT";
+  }
+
+  /**
+   * A write whose outcome the client cannot know.
+   *
+   * The request left, and no answer came back that says what the engine did:
+   * an engine timeout, a dead network, or our own deadline expiring. A read
+   * that fails is simply retried; a write that fails this way must not be
+   * announced as a rejection, because "Rejected" is a claim about an order the
+   * client never heard about.
+   */
+  get isOutcomeUnknown() {
+    return (
+      this.isEngineDown ||
+      this.code === CLIENT_ERROR_CODES.NETWORK ||
+      this.code === CLIENT_ERROR_CODES.TIMEOUT
     );
   }
 

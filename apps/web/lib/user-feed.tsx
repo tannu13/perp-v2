@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { getWsTicket } from "@/lib/api/endpoints";
+import { ApiError } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session-provider";
 import { backoffDelay } from "@/lib/market-feed-core";
 import { parseUserFrame, type UserEvent } from "@/lib/user-feed-core";
@@ -69,9 +70,9 @@ const MAX_BUFFER = 256;
  *
  * `syncing` is distinct from `live` deliberately: during it the tables hold
  * state that is about to be replaced, and an event that has already arrived
- * has not been applied yet. Nothing renders differently for it today, but
- * collapsing it into `live` would make that distinction unavailable to the
- * Phase 14 sweep.
+ * has not been applied yet. Phase 13 kept it separate so that Phase 14 could
+ * decide whether to say it; Phase 14 decided that it should, and
+ * `AccountFeedStatus` in the header gives all six states a word.
  */
 export type UserFeedStatus =
   | "idle"
@@ -257,11 +258,29 @@ export function UserFeedProvider({ children }: { children: React.ReactNode }) {
       let ticket: string;
       try {
         ticket = (await getWsTicket()).ticket;
-      } catch {
-        // The API is down, or the session has expired — in which case the
-        // interceptor is already redirecting and this retry will be torn down
-        // with the provider. Either way the answer is the same schedule.
+      } catch (err) {
         if (stopped || mine !== generation) return;
+
+        /**
+         * An expired session ends the loop rather than backing off through it.
+         *
+         * Phase 14 (D17's neighbour). This provider fetches a ticket on every
+         * connection attempt, so a session that expires while the socket is
+         * down produces a failing `/ws-ticket` on every tick of the backoff —
+         * each one a 401, each one arriving at the interceptor. The latch in
+         * `http.ts` collapses a concurrent burst, not a schedule, so what the
+         * user would see is a sign-in page raising the same toast every few
+         * seconds. There is nothing to reconnect to without a session: stop,
+         * and let the identity change re-run this effect if they sign in
+         * again.
+         */
+        if (err instanceof ApiError && err.isSilent) {
+          teardown();
+          setStatus("disconnected");
+          return;
+        }
+
+        // The API is down. Same schedule as a dropped socket.
         setStatus("reconnecting");
         retryTimer = setTimeout(() => void connect(), backoffDelay(attempt++));
         return;

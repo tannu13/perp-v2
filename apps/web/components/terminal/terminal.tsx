@@ -270,6 +270,8 @@ function TerminalShell({ market }: { market: Market }) {
                 // figure the ladder used to show was the simulator's own
                 // random walk. See the market bar for the reasoning (D6).
                 change={null}
+                // Tells the ladder whether a missing book is still coming.
+                source={feed.source}
                 market={market}
                 onPriceSelect={(p) => setPrice(p.toFixed(market.priceDecimals))}
               />

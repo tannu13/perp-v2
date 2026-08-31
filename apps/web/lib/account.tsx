@@ -133,7 +133,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       // An auth failure is already being handled by the interceptor; showing an
       // error panel about it as well would be noise on the way to /signin.
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
 
       setState({
         status: "error",

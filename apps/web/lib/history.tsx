@@ -186,7 +186,7 @@ export function HistoryProvider({
       setState({ status: "ready", fills, orders, error: null });
     } catch (err) {
       if (mine !== generation.current) return;
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
 
       hasRows.current = false;
       setCursor(null);
@@ -294,7 +294,7 @@ export function HistoryProvider({
     } catch (err) {
       // A failed page leaves what is on screen alone — it is still true, just
       // shorter. The cursor is kept so the button can be pressed again.
-      if (err instanceof ApiError && err.isAuthFailure) return;
+      if (err instanceof ApiError && err.isSilent) return;
     } finally {
       setLoadingMore(false);
     }

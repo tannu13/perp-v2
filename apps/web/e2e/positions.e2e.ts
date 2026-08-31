@@ -309,19 +309,22 @@ test("closing into an empty book is refused, verbatim, and the position survives
   await dialog.getByRole("button", { name: "Close position" }).click();
 
   /**
-   * Matched by TEXT, not through the notifications region — and that is a
-   * finding, not a stylistic choice.
+   * Matched through `role="alert"` INSIDE the dialog. This is D11, and this
+   * assertion is what closing it is worth.
    *
-   * The dialog stays open when a close fails (deliberately: the position is
-   * untouched and the obvious next action is the button already on screen).
-   * Radix marks everything outside the dialog `aria-hidden`, and the toast
-   * viewport lives at the app root, outside it. So the engine's refusal is
-   * painted and readable, but it is OUT OF THE ACCESSIBILITY TREE for as long
-   * as the dialog is open — `getByRole("region", …)` cannot see it, and neither
-   * can a screen reader. See the note in PROGRESS.md.
+   * The refusal used to be a toast. The dialog stays open when a close fails
+   * (deliberately: the position is untouched and the obvious next action is
+   * the button already on screen), and Radix marks everything outside an open
+   * dialog `aria-hidden` — while the toast viewport lives at the app root,
+   * outside it. So the engine's own words were painted, readable, and out of
+   * the accessibility tree, on the one action in this app that realises money.
+   * This spec could not see them either, which is how it was found.
+   *
+   * Phase 14 moved the message into the dialog. Asserting it through the role
+   * is the point: `getByText` would pass against either version.
    */
-  const refusal = page.getByText("There are no matches available");
-  await expect(refusal.first()).toBeVisible();
+  const refusal = dialog.getByRole("alert");
+  await expect(refusal).toContainText("There are no matches available");
 
   /**
    * Dismiss the dialog before reading the table behind it — for the same reason

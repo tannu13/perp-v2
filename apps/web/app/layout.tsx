@@ -21,6 +21,7 @@ import { SessionProvider } from "@/lib/auth/session-provider";
 import { UserFeedProvider } from "@/lib/user-feed";
 import { AccountProvider } from "@/lib/account";
 import { FillNotifications } from "@/components/chrome/fill-notifications";
+import { SessionNotice } from "@/components/chrome/session-notice";
 import "./globals.css";
 
 /**
@@ -79,6 +80,11 @@ export default function RootLayout({
                   {/* Renders nothing. Announces the fills that have no request
                       behind them — a maker being hit, and a liquidation. */}
                   <FillNotifications />
+                  {/* Also renders nothing. One toast per expired session — the
+                      sentence that goes with the interceptor's redirect, which
+                      `SessionProvider` cannot raise itself because it is above
+                      this toast provider. */}
+                  <SessionNotice />
                   {children}
                 </ToastProvider>
               </TooltipProvider>

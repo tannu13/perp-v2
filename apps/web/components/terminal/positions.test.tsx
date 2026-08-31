@@ -55,7 +55,7 @@ let positions: Row[] = [];
 let books: Record<string, { bids: [string, string][]; asks: [string, string][] }> = {};
 let failingMarkets: string[] = [];
 let failingDepth: string[] = [];
-let orderOutcome: "ok" | "fail" = "ok";
+let orderOutcome: "ok" | "fail" | "engine-down" = "ok";
 /** Every POST /order body seen, so "no request was made" is provable. */
 let ordersPosted: Record<string, unknown>[] = [];
 /** Positions fan-outs, so "the close refetched nothing" is provable too. */
@@ -109,6 +109,17 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       return json(
         { code: "INVALID_REQUEST", message: "There are no matches available" },
         400,
+      );
+    }
+    if (orderOutcome === "engine-down") {
+      // Exactly what `backend-comms.ts` answers when the engine does not
+      // reply inside ENGINE_TIMEOUT_MS.
+      return json(
+        {
+          code: "ENGINE_TIMEOUT",
+          message: "The matching engine is not responding",
+        },
+        503,
       );
     }
     // The close filled: the position is gone from the next read.
@@ -319,9 +330,54 @@ describe("closing a position", () => {
     // Verbatim: "There are no matches available" tells the user something true
     // and actionable in a way a generic failure line does not.
     expect(
-      await screen.findByText("There are no matches available"),
+      await screen.findByText(/There are no matches available/),
     ).toBeInTheDocument();
     // The position is untouched — the row is still there, and still closeable.
     expect(screen.getByText("SOL-USD")).toBeInTheDocument();
+  });
+
+  /**
+   * D11, fixed in Phase 14.
+   *
+   * The refusal used to be a toast, and the toast viewport lives at the app
+   * root — outside the dialog, which Radix marks `aria-hidden` while it is
+   * open. So the engine's own words were painted and readable and completely
+   * absent from the accessibility tree, on the one action in this app that
+   * realises money. `toBeVisible` cannot catch that (the toast IS visible);
+   * containment in the dialog node is the property that actually matters, so
+   * that is what is asserted.
+   */
+  it("puts the refusal INSIDE the dialog, where a screen reader can reach it", async () => {
+    orderOutcome = "fail";
+    await openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Close position" }));
+
+    const message = await screen.findByText(/There are no matches available/);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toContainElement(message);
+    // And the dialog is still open, so "try again" is the button under the
+    // cursor rather than a row action the user has to find again.
+    expect(
+      screen.getByRole("button", { name: "Close position" }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * An engine timeout is not a refusal, and saying "Could not close position"
+   * for one would be a claim the client cannot make: `POST /order` reached the
+   * backend, which pushed it onto the stream — the close may be executing right
+   * now. Retrying on that assumption flattens the position twice.
+   */
+  it("says a close is NOT CONFIRMED when the engine stops answering", async () => {
+    orderOutcome = "engine-down";
+    await openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Close position" }));
+
+    const heading = await screen.findByText(/close not confirmed/i);
+    expect(screen.getByRole("dialog")).toContainElement(heading);
+    expect(
+      screen.getByText(/may still have gone through/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not close position/i)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SIGN_IN_PATH, useSession } from "./session-provider";
 import { SkeletonRegion } from "@/components/ui";
@@ -17,18 +17,32 @@ import { SkeletonRegion } from "@/components/ui";
  * account data at any point: there is none until `GET /me` succeeds.
  */
 export function RequireSession({ children }: { children: React.ReactNode }) {
-  const { status, signingOut } = useSession();
+  const { status, signingOut, expiredCount } = useSession();
   const router = useRouter();
   const pathname = usePathname();
+  /**
+   * The expiry count this guard mounted with.
+   *
+   * An EXPIRED session is the interceptor's redirect to make, not this one's,
+   * and Phase 14's criterion is one redirect carrying `next=`. Both fire on the
+   * same state change — the interceptor synchronously, then this effect when
+   * the status it set reaches render — and the second one wins. The
+   * interceptor's target carries `pathname + search`; this one knows only the
+   * pathname, so letting it run last silently dropped the query string from
+   * the URL the user is sent back to.
+   */
+  const expiredAtMount = useRef(expiredCount);
 
   useEffect(() => {
     if (status !== "anon") return;
     // An explicit sign-out is already navigating home; redirecting to /signin
     // as well would race it and land the user somewhere they did not ask for.
     if (signingOut) return;
+    // As above: the interceptor has already redirected, with a better URL.
+    if (expiredCount !== expiredAtMount.current) return;
     const next = encodeURIComponent(pathname);
     router.replace(`${SIGN_IN_PATH}?next=${next}`);
-  }, [status, signingOut, pathname, router]);
+  }, [status, signingOut, expiredCount, pathname, router]);
 
   if (status === "authed") return <>{children}</>;
 

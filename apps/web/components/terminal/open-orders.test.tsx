@@ -332,6 +332,63 @@ describe("cancelling from the tab", () => {
     expect(screen.getAllByText("Order not found").length).toBeGreaterThan(0);
   });
 
+  /**
+   * §7.3's "submit then immediately cancel", found by Phase 14's race audit.
+   *
+   * The cancel is optimistic, so by the time the DELETE is sent the row is
+   * already off screen — and an `order.update` saying the order FILLED then
+   * arrives with nothing for the reducer to remove. The DELETE fails, because
+   * the engine cannot cancel an order that has already filled, and the restore
+   * used to put back a resting row for an order that no longer exists. Nothing
+   * would have taken it away again until the next reconnect, and a restored
+   * row looks exactly like a row that never left.
+   */
+  it("does not restore a row whose order FILLED while the cancel was in flight", async () => {
+    openOrders = [row({ id: "aaaaaaaa-0000-4000-8000-000000000001", qty: "3" })];
+    cancelOutcome = "fail";
+    // Hold the DELETE open so the fill can land inside the window.
+    releaseCancel = () => undefined;
+    openTab();
+    await screen.findByText("SOL-USD");
+
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    await act(async () => {
+      FakeSocket.instances[0]!.accept();
+    });
+
+    fireEvent.click(cancelButtons()[0]!);
+    await waitFor(() => expect(screen.queryByText("SOL-USD")).toBeNull());
+
+    await act(async () => {
+      FakeSocket.instances[0]!.push([
+        {
+          type: "order.update",
+          orderId: "aaaaaaaa-0000-4000-8000-000000000001",
+          marketId: SOL.id,
+          status: "filled",
+          filledQty: "3",
+        },
+      ]);
+    });
+
+    // Now let the cancel be refused.
+    await act(async () => {
+      releaseCancel?.();
+    });
+
+    /**
+     * The toast first, and it is not decoration: it is what proves the failure
+     * path RAN. Asserting the absent row straight after the release would pass
+     * against the unfixed version too — the restore is a few microtasks behind
+     * and the row is legitimately gone until it lands.
+     */
+    expect(await screen.findAllByText("Could not cancel order")).not.toHaveLength(
+      0,
+    );
+    expect(screen.queryByText("SOL-USD")).toBeNull();
+    expect(screen.getByText("No open orders")).toBeInTheDocument();
+  });
+
   it("disables the row's button while its cancel is in flight", async () => {
     openOrders = [row({ id: "aaaaaaaa-0000-4000-8000-000000000001" })];
     // Hold the DELETE open. The row is already gone optimistically, so this is

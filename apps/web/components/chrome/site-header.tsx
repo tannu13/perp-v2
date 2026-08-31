@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from "@/components/ui";
 import { DepositDialog } from "@/components/terminal/deposit-dialog";
+import { AccountFeedStatus } from "./account-feed-status";
 import { AccountMenu } from "./account-menu";
 
 /**
@@ -125,6 +126,16 @@ export function SiteHeader({ className }: { className?: string }) {
           </>
         ) : (
           <>
+            {/*
+              Before the equity figure, not after it, and that is the point:
+              this dot says whether the number to its right is being kept up to
+              date. Since Phase 13 there is no refetch behind any account
+              surface — if the private channel is down, equity, positions and
+              open orders are all the last snapshot the server gave, and D17
+              records that nothing on screen used to admit it.
+            */}
+            <AccountFeedStatus />
+
             <EquityReadout account={account} />
 
             <Button
