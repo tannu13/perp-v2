@@ -36,7 +36,11 @@ import { useAccount } from "@/lib/account";
 import { useHistory, type FillRow, type HistoryOrder } from "@/lib/history";
 import { useOrders, type OpenOrder } from "@/lib/orders";
 import { usePositions, type OpenPosition } from "@/lib/positions";
-import { CLOSE_SLIPPAGE_PERCENT, rejectionMessage } from "./order-payload";
+import {
+  CLOSE_SLIPPAGE_PERCENT,
+  followedBy,
+  rejectionMessage,
+} from "./order-payload";
 import { ApiError } from "@/lib/api/errors";
 
 /**
@@ -280,7 +284,10 @@ function ClosePositionButton({ position }: { position: OpenPosition }) {
         err instanceof ApiError && err.isOutcomeUnknown
           ? {
               title: "Close not confirmed",
-              description: `${err.message} This close may still have gone through — check your positions before trying again.`,
+              description: followedBy(
+                err.message,
+                "This close may still have gone through — check your positions before trying again.",
+              ),
             }
           : {
               title: "Could not close position",
@@ -423,7 +430,10 @@ function CancelOrderButton({ order }: { order: OpenOrder }) {
         title: unknown ? "Cancel not confirmed" : "Could not cancel order",
         description:
           err instanceof ApiError && err.isOutcomeUnknown
-            ? `${err.message} The order is shown as it was — it may still have been cancelled.`
+            ? followedBy(
+                err.message,
+                "The order is shown as it was — it may still have been cancelled.",
+              )
             : err instanceof ApiError
               ? err.message
               : "The order is still resting on the book.",

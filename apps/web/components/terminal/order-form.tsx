@@ -25,6 +25,7 @@ import { createOrder } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/errors";
 import {
   buildOrderPayload,
+  followedBy,
   outcomeFromResult,
   rejectionMessage,
   type TicketDraft,
@@ -245,7 +246,7 @@ export function OrderForm({
       const unknown = err instanceof ApiError && err.isOutcomeUnknown;
       const reason =
         err instanceof ApiError && err.isOutcomeUnknown
-          ? `${err.message} Check Open orders before placing it again.`
+          ? followedBy(err.message, "Check Open orders before placing it again.")
           : rejectionMessage(err);
 
       if (unknown) setStalled(reason);

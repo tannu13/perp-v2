@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { asTransportFailure } from "./transport-failure";
 import { AppError } from "../errors/app-error";
 
 /**
@@ -49,4 +50,41 @@ describeRedis("sendToEngineStream", () => {
     },
     TEST_TIMEOUT_MS,
   );
+});
+
+/**
+ * D19: with Redis stopped, `xAdd` rejects and the request has to be answered.
+ * What it is answered *with* decides what the browser says happened to the
+ * order — and the one thing it must not say is that the order was rejected.
+ */
+describe("a write that never reached the stream", () => {
+  it("becomes a 503 ENGINE_TIMEOUT, so the ticket says Not confirmed", () => {
+    class SocketClosedUnexpectedlyError extends Error {}
+
+    const mapped = asTransportFailure(
+      new SocketClosedUnexpectedlyError("Socket closed unexpectedly"),
+    );
+
+    expect(mapped).toBeInstanceOf(AppError);
+    const err = mapped as AppError;
+    expect(err.statusCode).toBe(503);
+    expect(err.errorCode).toBe("ENGINE_TIMEOUT");
+    // `isOutcomeUnknown` on the client keys off the code, not the words.
+    expect(err.message).toBe("Could not reach the matching engine");
+  });
+
+  it("maps a refused connection too", () => {
+    const mapped = asTransportFailure(
+      Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:6379"), {
+        code: "ECONNREFUSED",
+      }),
+    );
+
+    expect((mapped as AppError).errorCode).toBe("ENGINE_TIMEOUT");
+  });
+
+  it("leaves a real bug alone, so it still surfaces as a 500", () => {
+    const bug = new TypeError("payload.map is not a function");
+    expect(asTransportFailure(bug)).toBe(bug);
+  });
 });

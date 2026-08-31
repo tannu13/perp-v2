@@ -8,6 +8,11 @@ import {
   type TStreamEngineRequest,
 } from "@repo/shared/redis-events";
 import type { TEngine, TEngineHandler } from "./exchange-engine";
+import {
+  attachRedisLogging,
+  redisClientOptions,
+  runStreamLoop,
+} from "@repo/shared/redis-resilience";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;
@@ -21,15 +26,11 @@ export const setupComms = async ({
   engineHandler: (message: TEngineHandler) => ReturnType<TEngine["handle"]>;
 }) => {
   const recoveredMessageIds = new Map<string, boolean>();
-  const listenerClient = await createClient({ url: env.REDIS_URL }).on(
-    "error",
-    (err) => console.log("Redis Client Error", err),
-  );
+  const listenerClient = createClient(redisClientOptions(env.REDIS_URL));
+  attachRedisLogging(listenerClient, "engine listener");
 
-  const senderClient = await createClient({ url: env.REDIS_URL }).on(
-    "error",
-    (err) => console.log("Redis Client Error", err),
-  );
+  const senderClient = createClient(redisClientOptions(env.REDIS_URL));
+  attachRedisLogging(senderClient, "engine sender");
 
   await Promise.all([listenerClient.connect(), senderClient.connect()]);
 
@@ -186,101 +187,106 @@ export const setupComms = async ({
     }
   };
 
-  const listenToIncomingEvents = async () => {
-    while (true) {
-      const response = (await listenerClient.xReadGroup(
-        LISTENER_GROUP,
-        LISTENER_GROUP_CONSUMER,
-        [
-          {
-            key: INCOMING_STREAM,
-            id: ">",
-          },
-        ],
+  /**
+   * One batch. `runStreamLoop` owns the loop, so a dropped Redis socket is a
+   * pause rather than an unhandled rejection that ends the engine (D19).
+   */
+  const readOneBatch = async () => {
+    const response = (await listenerClient.xReadGroup(
+      LISTENER_GROUP,
+      LISTENER_GROUP_CONSUMER,
+      [
         {
-          BLOCK: 0,
-          COUNT: 1,
+          key: INCOMING_STREAM,
+          id: ">",
         },
-      )) as TStreamEngineRequest | null;
+      ],
+      {
+        BLOCK: 0,
+        COUNT: 1,
+      },
+    )) as TStreamEngineRequest | null;
 
-      if (!response || !Array.isArray(response)) {
-        continue;
-      }
+    if (!response || !Array.isArray(response)) {
+      return;
+    }
 
-      for (const stream of response) {
-        for (const message of stream.messages) {
-          const rawResult = RawEngineRequestSchema.safeParse(message.message);
+    for (const stream of response) {
+      for (const message of stream.messages) {
+        const rawResult = RawEngineRequestSchema.safeParse(message.message);
 
-          if (!rawResult.success) {
-            console.error(
-              "Unable to parse event - wrong structure:",
-              message.id,
-              message.message,
-              rawResult.error,
-            );
-            await listenerClient.xAck(
-              INCOMING_STREAM,
-              LISTENER_GROUP,
-              message.id,
-            );
-            continue;
-          }
-
-          const parsedMessage = {
-            ...rawResult.data,
-            payload: JSON.parse(rawResult.data.payload),
-          };
-
-          const result = EngineRequestSchema.safeParse(parsedMessage);
-
-          if (!result.success) {
-            console.error(
-              "Unable to parse event - wrong structure:",
-              message.id,
-              message.message,
-              rawResult.error,
-            );
-            await listenerClient.xAck(
-              INCOMING_STREAM,
-              LISTENER_GROUP,
-              message.id,
-            );
-            continue;
-          }
-
-          const { correlationId, payload, type } = result.data;
-          try {
-            const data = engineHandler({
-              payload,
-              type,
-              messageId: message.id,
-            });
-            if (data) {
-              await sendToResponseStream({
-                correlationId,
-                ok: true,
-                data,
-              });
-            }
-          } catch (err) {
-            if (err instanceof Error) {
-              await sendToResponseStream({
-                correlationId,
-                ok: false,
-                error: err.message,
-              });
-            }
-          }
-
+        if (!rawResult.success) {
+          console.error(
+            "Unable to parse event - wrong structure:",
+            message.id,
+            message.message,
+            rawResult.error,
+          );
           await listenerClient.xAck(
             INCOMING_STREAM,
             LISTENER_GROUP,
             message.id,
           );
+          continue;
         }
+
+        const parsedMessage = {
+          ...rawResult.data,
+          payload: JSON.parse(rawResult.data.payload),
+        };
+
+        const result = EngineRequestSchema.safeParse(parsedMessage);
+
+        if (!result.success) {
+          console.error(
+            "Unable to parse event - wrong structure:",
+            message.id,
+            message.message,
+            rawResult.error,
+          );
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
+          continue;
+        }
+
+        const { correlationId, payload, type } = result.data;
+        try {
+          const data = engineHandler({
+            payload,
+            type,
+            messageId: message.id,
+          });
+          if (data) {
+            await sendToResponseStream({
+              correlationId,
+              ok: true,
+              data,
+            });
+          }
+        } catch (err) {
+          if (err instanceof Error) {
+            await sendToResponseStream({
+              correlationId,
+              ok: false,
+              error: err.message,
+            });
+          }
+        }
+
+        await listenerClient.xAck(
+          INCOMING_STREAM,
+          LISTENER_GROUP,
+          message.id,
+        );
       }
     }
   };
+
+  const listenToIncomingEvents = () =>
+    runStreamLoop("engine listener", readOneBatch);
 
   const sendToResponseStream = async ({
     correlationId,

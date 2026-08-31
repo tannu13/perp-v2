@@ -126,6 +126,55 @@ describe("CORS (G1)", () => {
   });
 });
 
+describe("an unhandled failure (Phase 15)", () => {
+  /**
+   * Found by stopping Postgres with a browser open: Drizzle puts the failing
+   * statement AND its parameters in `error.message`, and the handler was
+   * sending that message to the client. `GET /me` answered with the users
+   * query and the id it ran with.
+   */
+  it("keeps an unhandled error's own words off the wire", async () => {
+    nextReply = async () => {
+      throw new Error(
+        'Failed query: select "id" from "users" where id = $1\nparams: 11111111-1111-1111-1111-111111111111',
+      );
+    };
+
+    const res = await request("/equity/balances", {
+      headers: { authorization: `Bearer ${validToken()}` },
+    });
+
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body).toEqual({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Something went wrong on our end.",
+    });
+    expect(JSON.stringify(body)).not.toContain("Failed query");
+    expect(JSON.stringify(body)).not.toContain("11111111");
+  });
+
+  it("still answers an operational error in its own words (§7.4)", async () => {
+    // The engine's rejections are user-facing copy and must survive.
+    nextReply = async () => {
+      throw new ServiceUnavailableError(
+        "The matching engine is not responding",
+        "ENGINE_TIMEOUT",
+      );
+    };
+
+    const res = await request("/equity/balances", {
+      headers: { authorization: `Bearer ${validToken()}` },
+    });
+
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({
+      code: "ENGINE_TIMEOUT",
+      message: "The matching engine is not responding",
+    });
+  });
+});
+
 describe("authentication (G6)", () => {
   it("returns 401 TOKEN_MISSING when there is no header", async () => {
     const res = await request("/equity/balances");

@@ -100,11 +100,21 @@ export const createApp = ({
         message: err.message,
       });
     }
+    /**
+     * An unhandled error's own words are for the log, never for the wire.
+     *
+     * Phase 15 stopped Postgres with a browser open and read this back:
+     * `Failed query: select "id", "username", "name" from "users" ... params:
+     * <the user's uuid>`. Drizzle puts the statement and its parameters in
+     * `message`, so every unhandled database failure was handing the client
+     * the schema and whatever ids the query ran with. Operational errors
+     * (`AppError` above) are still verbatim — those messages are written to be
+     * read, and §7.4 depends on them.
+     */
     console.error(err);
     return res.status(500).json({
       code: "INTERNAL_SERVER_ERROR",
-      message:
-        err instanceof Error ? err.message : "Something went wrong on our end.",
+      message: "Something went wrong on our end.",
     });
   });
 

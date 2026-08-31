@@ -5,6 +5,7 @@ import {
   buildClosePayload,
   buildOrderPayload,
   CLOSE_SLIPPAGE_PERCENT,
+  followedBy,
   outcomeFromResult,
   rejectionMessage,
   roundMarginUp,
@@ -265,5 +266,37 @@ describe("buildClosePayload", () => {
     // The rest of the app passes market UUIDs around; this one field is the
     // slug, because `CreateOrderSchema.market` is looked up by `markets.slug`.
     expect(buildClosePayload(long).market).toBe("SOL-USD");
+  });
+});
+
+describe("followedBy", () => {
+  /**
+   * The bug this exists for, in the words the browser showed in Phase 15: the
+   * backend's ENGINE_TIMEOUT message ends without a full stop, so the ticket
+   * read "The matching engine is not responding Check Open orders before
+   * placing it again."
+   */
+  it("punctuates a server message that did not punctuate itself", () => {
+    expect(
+      followedBy(
+        "The matching engine is not responding",
+        "Check Open orders before placing it again.",
+      ),
+    ).toBe(
+      "The matching engine is not responding. Check Open orders before placing it again.",
+    );
+  });
+
+  it("leaves a message that ended in a sentence alone", () => {
+    expect(followedBy("The request timed out.", "Try again.")).toBe(
+      "The request timed out. Try again.",
+    );
+    expect(followedBy("Are you sure?", "Try again.")).toBe(
+      "Are you sure? Try again.",
+    );
+  });
+
+  it("shows only our own sentence when the server sent no words", () => {
+    expect(followedBy("   ", "Try again.")).toBe("Try again.");
   });
 });

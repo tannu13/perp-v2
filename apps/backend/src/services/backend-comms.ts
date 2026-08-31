@@ -9,6 +9,12 @@ import {
   type TEngineResponseSchema,
 } from "@repo/shared/redis-events";
 import { ServiceUnavailableError } from "../errors/custom-errors";
+import {
+  attachRedisLogging,
+  redisClientOptions,
+  runStreamLoop,
+} from "@repo/shared/redis-resilience";
+import { asTransportFailure } from "./transport-failure";
 
 // register with the redis stream
 const INCOMING_STREAM = env.INCOMING_STREAM;
@@ -24,15 +30,11 @@ export const setupComms = async () => {
   const promiseResolvers: Map<string, (value: TEngineResponseSchema) => void> =
     new Map();
 
-  const listenerClient = await createClient({ url: env.REDIS_URL }).on(
-    "error",
-    (err) => console.log("Redis Client Error", err),
-  );
+  const listenerClient = createClient(redisClientOptions(env.REDIS_URL));
+  attachRedisLogging(listenerClient, "backend listener");
 
-  const senderClient = await createClient({ url: env.REDIS_URL }).on(
-    "error",
-    (err) => console.log("Redis Client Error", err),
-  );
+  const senderClient = createClient(redisClientOptions(env.REDIS_URL));
+  attachRedisLogging(senderClient, "backend sender");
 
   await Promise.all([listenerClient.connect(), senderClient.connect()]);
 
@@ -77,82 +79,87 @@ export const setupComms = async () => {
     }
   };
 
-  const listenToIncomingEvents = async () => {
-    while (true) {
-      const response = (await listenerClient.xReadGroup(
-        LISTENER_GROUP,
-        LISTENER_GROUP_CONSUMER,
-        [
-          {
-            key: INCOMING_STREAM,
-            id: ">",
-          },
-        ],
+  /**
+   * One batch. The loop, and its survival across a Redis outage, is
+   * `runStreamLoop` — see D19 in the shared module.
+   */
+  const readOneBatch = async () => {
+    const response = (await listenerClient.xReadGroup(
+      LISTENER_GROUP,
+      LISTENER_GROUP_CONSUMER,
+      [
         {
-          BLOCK: 0,
-          COUNT: 1,
+          key: INCOMING_STREAM,
+          id: ">",
         },
-      )) as TStreamEngineResponse | null;
+      ],
+      {
+        BLOCK: 0,
+        COUNT: 1,
+      },
+    )) as TStreamEngineResponse | null;
 
-      if (!response || !Array.isArray(response)) {
-        continue;
-      }
+    if (!response || !Array.isArray(response)) {
+      return;
+    }
 
-      for (const stream of response) {
-        for (const message of stream.messages) {
-          const rawResult = RawEngineResponseSchema.safeParse(message.message);
+    for (const stream of response) {
+      for (const message of stream.messages) {
+        const rawResult = RawEngineResponseSchema.safeParse(message.message);
 
-          if (!rawResult.success) {
-            console.error(
-              "Unable to parse event1 - wrong structure:",
-              message.id,
-              message.message,
-              rawResult.error,
-            );
-            await listenerClient.xAck(
-              INCOMING_STREAM,
-              LISTENER_GROUP,
-              message.id,
-            );
-            continue;
-          }
-
-          const isOk = JSON.parse(rawResult.data.ok);
-          const parsedMessage = {
-            ...rawResult.data,
-            ok: isOk,
-            data: isOk ? JSON.parse(rawResult.data.data) : "",
-          };
-
-          const result = EngineResponseSchema.safeParse(parsedMessage);
-
-          if (!result.success) {
-            console.error(
-              "Unable to parse event2 - wrong structure:",
-              message.id,
-              message.message,
-              rawResult.error,
-            );
-            await listenerClient.xAck(
-              INCOMING_STREAM,
-              LISTENER_GROUP,
-              message.id,
-            );
-            continue;
-          }
-          const { correlationId } = result.data;
-          // resolve the promise, if available else short circuit
-          if (correlationId) promiseResolvers.get(correlationId)?.(result.data);
-
+        if (!rawResult.success) {
+          console.error(
+            "Unable to parse event1 - wrong structure:",
+            message.id,
+            message.message,
+            rawResult.error,
+          );
           await listenerClient.xAck(
             INCOMING_STREAM,
             LISTENER_GROUP,
             message.id,
           );
+          continue;
         }
+
+        const isOk = JSON.parse(rawResult.data.ok);
+        const parsedMessage = {
+          ...rawResult.data,
+          ok: isOk,
+          data: isOk ? JSON.parse(rawResult.data.data) : "",
+        };
+
+        const result = EngineResponseSchema.safeParse(parsedMessage);
+
+        if (!result.success) {
+          console.error(
+            "Unable to parse event2 - wrong structure:",
+            message.id,
+            message.message,
+            rawResult.error,
+          );
+          await listenerClient.xAck(
+            INCOMING_STREAM,
+            LISTENER_GROUP,
+            message.id,
+          );
+          continue;
+        }
+        const { correlationId } = result.data;
+        // resolve the promise, if available else short circuit
+        if (correlationId) promiseResolvers.get(correlationId)?.(result.data);
+
+        await listenerClient.xAck(
+          INCOMING_STREAM,
+          LISTENER_GROUP,
+          message.id,
+        );
       }
     }
   };
+
+  const listenToIncomingEvents = () =>
+    runStreamLoop("backend listener", readOneBatch);
 
   /**
    * Publishes a request to the engine and waits for the correlated reply.
@@ -202,7 +209,7 @@ export const setupComms = async () => {
           type,
           payload: JSON.stringify(payload),
         })
-        .catch((err) => settle(() => reject(err)));
+        .catch((err) => settle(() => reject(asTransportFailure(err))));
     });
   };
 

@@ -11,6 +11,11 @@ import {
 } from "@repo/shared/redis-events";
 import type { ZodType } from "zod";
 import env from "../env";
+import {
+  attachRedisLogging,
+  redisClientOptions,
+  runStreamLoop,
+} from "@repo/shared/redis-resilience";
 
 // register with the redis stream
 const RESPONSE_STREAM = env.ENGINE_RESPONSE_STREAM;
@@ -34,12 +39,10 @@ export const setupComms = async ({
 }: {
   responseHandler: (data: TEngineResponseSchema) => Promise<void>;
 }) => {
-  const subscriber: RedisClientType = createClient({
-    url: env.REDIS_URL,
-  });
-  subscriber.on("error", (err) => {
-    console.log("Redis Client Error", err);
-  });
+  const subscriber: RedisClientType = createClient(
+    redisClientOptions(env.REDIS_URL),
+  );
+  attachRedisLogging(subscriber, "ws-server");
 
   await Promise.all([subscriber.connect()]);
 
@@ -156,7 +159,8 @@ export const setupComms = async ({
     });
   };
 
-  const listenToIncomingClientEvents = async <TRaw, TParsed>(
+  const listenToIncomingClientEvents = <TRaw, TParsed>(
+    label: string,
     config: StreamProcessorConfig<TRaw, TParsed>,
   ) => {
     const {
@@ -169,7 +173,11 @@ export const setupComms = async ({
       transformRaw,
       handler,
     } = config;
-    while (true) {
+    /**
+     * One batch. `runStreamLoop` owns the loop, so a dropped Redis socket
+     * pauses this listener instead of ending the process (D19).
+     */
+    const readOneBatch = async () => {
       const response = (await client.xReadGroup(
         groupName,
         consumerName,
@@ -186,7 +194,7 @@ export const setupComms = async ({
       )) as TStreamEngineRequest | null;
 
       if (!response || !Array.isArray(response)) {
-        continue;
+        return;
       }
 
       for (const stream of response) {
@@ -227,7 +235,12 @@ export const setupComms = async ({
             const code = error?.code ?? error?.cause?.code;
             if (code === "23505") {
               console.log("Duplicate event skipped");
-              return; // Safe early return, data was already rolled back!
+              // The loop lives outside this function now, so `return` skips
+              // this batch instead of ending the listener for good — which is
+              // what "safe early return" always meant. Inside the old
+              // `while (true)`, one duplicate stopped the service consuming
+              // forever.
+              return;
             }
             throw error;
           }
@@ -235,11 +248,13 @@ export const setupComms = async ({
           await client.xAck(streamName, groupName, message.id);
         }
       }
-    }
+    };
+
+    return runStreamLoop(label, readOneBatch);
   };
 
-  const listenToIncomingEvents = async () => {
-    listenToIncomingClientEvents({
+  const listenToIncomingEvents = () => {
+    listenToIncomingClientEvents("ws-server responses", {
       client: subscriber,
       streamName: RESPONSE_STREAM,
       groupName: LISTENER_GROUP,

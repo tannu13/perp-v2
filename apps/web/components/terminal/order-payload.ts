@@ -164,6 +164,24 @@ export function rejectionMessage(err: unknown): string {
 }
 
 /**
+ * Joins a message the server wrote to a sentence of ours.
+ *
+ * Engine and backend messages are shown verbatim (§7.4) — but their
+ * punctuation is not ours to assume, and the backend's `ENGINE_TIMEOUT`
+ * message ends without a full stop. Appending to it directly produced
+ * "The matching engine is not responding Check Open orders before placing it
+ * again." on the ticket, the close dialog and the cancel toast: three
+ * surfaces, all read under pressure, all of them ours to punctuate. Found in
+ * the browser in Phase 15, which is the only place it could have been found —
+ * every unit test asserting these lines matches a fragment.
+ */
+export function followedBy(message: string, followUp: string): string {
+  const said = message.trim();
+  if (!said) return followUp;
+  return `${/[.!?]$/.test(said) ? said : `${said}.`} ${followUp}`;
+}
+
+/**
  * The slippage band a close is submitted with, in whole percent.
  *
  * A close is a market order and therefore a limit order at the worst price the

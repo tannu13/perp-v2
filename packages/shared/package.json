@@ -9,7 +9,8 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./redis-events": "./src/redis-events.ts"
+    "./redis-events": "./src/redis-events.ts",
+    "./redis-resilience": "./src/redis-resilience.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
