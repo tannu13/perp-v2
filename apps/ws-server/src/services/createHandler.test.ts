@@ -21,7 +21,7 @@ type Published = { topic: string; message: string };
  * surface. Cast at the boundary rather than typed as a partial `Bun.Server`:
  * pretending to implement that interface would be a bigger lie than the cast.
  */
-function harness() {
+function harness(intervalMs = 0) {
   const published: Published[] = [];
   const server = {
     publish: (topic: string, message: string) => {
@@ -30,16 +30,28 @@ function harness() {
     },
   } as unknown as Parameters<typeof createHandler>[0];
 
-  const handler = createHandler(server);
+  /**
+   * Zero by default, which is the "publish on arrival" path.
+   *
+   * The assertions in the first block are about WHAT reaches a topic, and every
+   * one of them drives a single engine reply — under any interval that reply is
+   * the leading edge and publishes immediately, so the cadence would be
+   * invisible to them. Turning it off anyway keeps them independent of a
+   * default that is a tuning decision. The cadence itself is asserted below,
+   * with an interval passed in.
+   */
+  const handler = createHandler(server, { intervalMs });
 
   /** Everything published to one feed, parsed. */
-  const on = (feed: string) =>
+  const on = (feed: string, market = MARKET) =>
     published
-      .filter((p) => p.topic === `feed:${MARKET}:${feed}`)
+      .filter((p) => p.topic === `feed:${market}:${feed}`)
       .map((p) => JSON.parse(p.message) as { feed: string; marketId: string; data: any });
 
   return { handler, published, on };
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const depth = {
   market: MARKET,
@@ -290,5 +302,134 @@ describe("createHandler — the user channel", () => {
     const h = harness();
     await h.handler(reply({ depth, lastTradedPrice: "101", indexPrice: "200" }));
     expect(h.published.some((p) => p.topic.startsWith("user:"))).toBe(false);
+  });
+});
+
+/**
+ * The publish cadence (the burst fix).
+ *
+ * The engine broadcasts a full 20-level book on every order event, so the
+ * market maker re-quoting five rungs a side lands ~20 depth frames inside a few
+ * hundred milliseconds and then goes quiet until it re-quotes. Every frame in
+ * that burst is a complete snapshot, so all but the last are already stale when
+ * they are published — but each one still costs every subscriber a render,
+ * which is what made the ladder arrive in one lurch and then sit still between
+ * cycles.
+ *
+ * Depth, last price and index price are therefore published on a fixed cadence.
+ * Prints are not, and the line between the two is the point of this block.
+ */
+describe("createHandler — market-state cadence", () => {
+  const INTERVAL = 20;
+  const OTHER_MARKET = "9f6f0a1e-1111-4c2b-9d55-bbbbbbbbbbbb";
+
+  const book = (lastUpdateId: number, bid: string, market = MARKET) => ({
+    ...depth,
+    market,
+    lastUpdateId,
+    bids: [[bid, "5"]] as [string, string][],
+  });
+
+  it("publishes the first update immediately, then coalesces the burst", async () => {
+    const h = harness(INTERVAL);
+
+    // One cancel-and-replace cycle, as the maker actually issues it.
+    for (const [id, bid] of [[1, "100"], [2, "101"], [3, "102"], [4, "103"]] as const) {
+      await h.handler(reply({ depth: book(id, bid), lastTradedPrice: "101", indexPrice: "200" }));
+    }
+
+    // The leading edge is on the wire with no added latency: a quiet book that
+    // ticks once must not wait for a window that only exists because of bursts.
+    expect(h.on("depth")).toHaveLength(1);
+    expect(h.on("depth")[0]!.data.lastUpdateId).toBe(1);
+
+    await sleep(INTERVAL * 3);
+
+    // The other three collapsed into one, and it is the NEWEST book — not the
+    // oldest, and not an average of anything.
+    const books = h.on("depth");
+    expect(books).toHaveLength(2);
+    expect(books[1]!.data.lastUpdateId).toBe(4);
+    expect(books[1]!.data.bids[0][0]).toBe("103");
+  });
+
+  it("never coalesces prints, however hard the book is churning", async () => {
+    // The asymmetry this whole design rests on. A superseded book is worth
+    // nothing; a superseded print is a trade that never appears on the tape.
+    const h = harness(INTERVAL);
+
+    for (const id of ["t1", "t2", "t3", "t4"]) {
+      await h.handler(
+        reply({
+          depth,
+          lastTradedPrice: "101",
+          indexPrice: "200",
+          trades: [trade({ id, price: "101" })],
+        }),
+      );
+    }
+
+    expect(h.on("trades")).toHaveLength(4);
+    expect(h.on("trades").map((p) => p.data.id)).toEqual(["t1", "t2", "t3", "t4"]);
+    expect(h.on("depth")).toHaveLength(1);
+  });
+
+  it("coalesces per market, so a busy book cannot delay a quiet one", async () => {
+    const h = harness(INTERVAL);
+
+    await h.handler(reply({ depth: book(1, "100"), lastTradedPrice: "100", indexPrice: "200" }));
+    await h.handler(reply({ depth: book(2, "101"), lastTradedPrice: "101", indexPrice: "200" }));
+    // A different market, first frame — its own window has not opened yet, so
+    // it publishes immediately however busy the first market is.
+    await h.handler(
+      reply({
+        depth: book(3, "900", OTHER_MARKET),
+        lastTradedPrice: "900",
+        indexPrice: "900",
+      }),
+    );
+
+    expect(h.on("depth", OTHER_MARKET)).toHaveLength(1);
+    expect(h.on("depth")).toHaveLength(1);
+  });
+
+  it("carries the last price and index price on the same cadence as the book", async () => {
+    // All three are levels rather than events, so they ride one window and one
+    // publish. Splitting them would put the seam price and the ladder under it
+    // a frame out of step.
+    const h = harness(INTERVAL);
+
+    await h.handler(reply({ depth: book(1, "100"), lastTradedPrice: "100", indexPrice: "200" }));
+    await h.handler(reply({ depth: book(2, "101"), lastTradedPrice: "101", indexPrice: "201" }));
+    await sleep(INTERVAL * 3);
+
+    expect(h.on("last-traded-price").map((p) => p.data.price)).toEqual(["100", "101"]);
+    expect(h.on("mark-price").map((p) => p.data.price)).toEqual(["200", "201"]);
+  });
+
+  it("stops the window once a market goes quiet, and reopens it on the next frame", async () => {
+    // The timer chain must not become a standing timer per market: it re-arms
+    // only while traffic is filling windows, and one idle interval ends it.
+    const h = harness(INTERVAL);
+
+    await h.handler(reply({ depth: book(1, "100"), lastTradedPrice: "100", indexPrice: "200" }));
+    await sleep(INTERVAL * 3);
+    expect(h.on("depth")).toHaveLength(1);
+
+    // Quiet spell over. This is a leading edge again, not a queued frame.
+    await h.handler(reply({ depth: book(2, "101"), lastTradedPrice: "101", indexPrice: "200" }));
+    expect(h.on("depth")).toHaveLength(2);
+    expect(h.on("depth")[1]!.data.lastUpdateId).toBe(2);
+  });
+
+  it("publishes every reply when the cadence is disabled", async () => {
+    // The escape hatch, and the behaviour every assertion above this block
+    // relies on.
+    const h = harness(0);
+
+    await h.handler(reply({ depth: book(1, "100"), lastTradedPrice: "100", indexPrice: "200" }));
+    await h.handler(reply({ depth: book(2, "101"), lastTradedPrice: "101", indexPrice: "200" }));
+
+    expect(h.on("depth")).toHaveLength(2);
   });
 });

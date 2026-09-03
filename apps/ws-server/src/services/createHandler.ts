@@ -1,8 +1,126 @@
 import type { TEngineResponseSchema } from "@repo/shared/redis-events";
+import env from "../env";
 import type { WebSocketData } from "../types";
 import { userTopic } from "./verify-ticket";
 
-export const createHandler = (server: Bun.Server<WebSocketData>) => {
+/**
+ * The market-state trio, held for the next publish tick.
+ *
+ * All three are *levels*, not events: each says "here is how the market stands
+ * now", so holding two and publishing the newer one loses nothing. That is
+ * exactly what makes them safe to coalesce and prints unsafe — see below.
+ */
+type MarketState = {
+  depth: unknown;
+  lastTradedPrice: string | null;
+  indexPrice: string | null;
+};
+
+export const createHandler = (
+  server: Bun.Server<WebSocketData>,
+  { intervalMs = env.MARKET_STATE_INTERVAL_MS }: { intervalMs?: number } = {},
+) => {
+  /**
+   * Coalescing state, keyed by market.
+   *
+   * Per market and not global: a book being re-quoted must not hold up a quiet
+   * one, and the cadence a subscriber sees should depend on the market they
+   * subscribed to and nothing else.
+   *
+   * `timers` doubles as the "a window is open" flag. A market with no entry has
+   * no window, which is why the first frame after a quiet spell publishes with
+   * no added latency (see `publishMarketState`).
+   */
+  const pending = new Map<string, MarketState>();
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const publish = (marketId: string, state: MarketState) => {
+    if (state.lastTradedPrice) {
+      server.publish(
+        `feed:${marketId}:last-traded-price`,
+        JSON.stringify({
+          feed: "last-traded-price",
+          marketId,
+          data: {
+            price: state.lastTradedPrice,
+          },
+        }),
+      );
+    }
+
+    if (state.indexPrice) {
+      server.publish(
+        `feed:${marketId}:mark-price`,
+        JSON.stringify({
+          feed: "mark-price",
+          marketId,
+          data: {
+            price: state.indexPrice,
+          },
+        }),
+      );
+    }
+
+    if (state.depth) {
+      server.publish(
+        `feed:${marketId}:depth`,
+        JSON.stringify({
+          feed: "depth",
+          marketId,
+          data: state.depth,
+        }),
+      );
+    }
+  };
+
+  /**
+   * The window closed.
+   *
+   * Nothing arrived during it → the window is dropped, so the market goes back
+   * to publishing on arrival. Something did → publish the newest state and open
+   * a fresh window, because traffic that filled one window will usually fill
+   * the next. The chain therefore runs only while a market is actually busy and
+   * stops on its own one interval after it goes quiet; there is no standing
+   * timer per market.
+   */
+  const flush = (marketId: string) => {
+    const state = pending.get(marketId);
+    if (!state) {
+      timers.delete(marketId);
+      return;
+    }
+    pending.delete(marketId);
+    publish(marketId, state);
+    timers.set(
+      marketId,
+      setTimeout(() => flush(marketId), intervalMs),
+    );
+  };
+
+  /**
+   * Leading edge, then at most one publish per interval.
+   *
+   * The leading edge is the half that matters for a market nobody is churning:
+   * a lone fill on a quiet book is on the wire immediately, and the cadence
+   * only ever costs latency to the second and later frame inside a window —
+   * which are, by construction, the ones a burst produced.
+   */
+  const publishMarketState = (marketId: string, state: MarketState) => {
+    if (intervalMs <= 0) {
+      publish(marketId, state);
+      return;
+    }
+    if (timers.has(marketId)) {
+      pending.set(marketId, state);
+      return;
+    }
+    publish(marketId, state);
+    timers.set(
+      marketId,
+      setTimeout(() => flush(marketId), intervalMs),
+    );
+  };
+
   const handler = async (response: TEngineResponseSchema) => {
     if (typeof response.data === "string" && response.data === "") return;
 
@@ -41,32 +159,6 @@ export const createHandler = (server: Bun.Server<WebSocketData>) => {
       const update = response.data.wsServer;
       const marketId = update.depth.market;
 
-      if (update.lastTradedPrice) {
-        server.publish(
-          `feed:${marketId}:last-traded-price`,
-          JSON.stringify({
-            feed: "last-traded-price",
-            marketId,
-            data: {
-              price: update.lastTradedPrice,
-            },
-          }),
-        );
-      }
-
-      if (update.indexPrice) {
-        server.publish(
-          `feed:${marketId}:mark-price`,
-          JSON.stringify({
-            feed: "mark-price",
-            marketId,
-            data: {
-              price: update.indexPrice,
-            },
-          }),
-        );
-      }
-
       /**
        * Prints.
        *
@@ -74,6 +166,14 @@ export const createHandler = (server: Bun.Server<WebSocketData>) => {
        * aggressive order can sweep several resting levels, and each of those is
        * a separate print at its own price — collapsing them would report a
        * sweep as one trade at one of the prices it crossed.
+       *
+       * Published IMMEDIATELY and never coalesced, which is the whole reason
+       * the tape is handled separately from the trio below. A print is an event
+       * that happened once; a book and a price are the current state of things.
+       * Dropping a superseded book loses nothing, dropping a superseded print
+       * loses a trade — so the two cannot share a policy however similar their
+       * plumbing looks. The tape leads the state it caused, which is also the
+       * order the two actually occur in.
        *
        * The payload is relayed exactly as the engine built it (§4.2). Nothing
        * is looked up and nothing is added, which is what keeps the guarantee
@@ -93,16 +193,11 @@ export const createHandler = (server: Bun.Server<WebSocketData>) => {
         }
       }
 
-      if (update.depth) {
-        server.publish(
-          `feed:${marketId}:depth`,
-          JSON.stringify({
-            feed: "depth",
-            marketId,
-            data: update.depth,
-          }),
-        );
-      }
+      publishMarketState(marketId, {
+        depth: update.depth,
+        lastTradedPrice: update.lastTradedPrice ?? null,
+        indexPrice: update.indexPrice ?? null,
+      });
     }
   };
 

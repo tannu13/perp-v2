@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
 import type { Depth, DepthLevel, FeedState } from "@/lib/market-feed";
@@ -28,7 +28,55 @@ import {
  * meet — the canonical instance of the system's signature primitive.
  */
 
+/**
+ * Rows are keyed by RANK, not by price.
+ *
+ * A key is an identity claim, and the identity of a row here is "the third best
+ * bid" — not the number printed in it. Keying by price says the opposite, and
+ * because a market maker re-quotes a whole ladder at new prices, every key
+ * changed on every cycle: React unmounted and remounted all twenty-odd rows
+ * instead of writing new text into them. That is a great deal of DOM churn for
+ * a redraw the user reads as one flicker.
+ *
+ * The usual argument against index keys — that they scramble component state
+ * when a list reorders — does not reach a price ladder. These rows hold no
+ * state, and rank is genuinely positional: a level entering at the top pushes
+ * every other one down a rung, which is exactly what an index key describes.
+ */
 type Row = { price: number; qty: number; total: number };
+
+/**
+ * How long the book must stay empty before the pane says so.
+ *
+ * The market maker cancels its whole ladder and then places the replacement, in
+ * that order and deliberately — placing first would let a new bid cross its own
+ * stale ask (see the note in apps/market-maker/services/maker.ts). So the book
+ * really is empty for the width of those round trips, the engine really does
+ * broadcast it, and the ladder is right to draw nothing.
+ *
+ * What is NOT right is a paragraph of explanatory copy mounting and unmounting
+ * every cycle. "No resting orders" is a claim about a market, not about a
+ * moment, so it waits until the emptiness has lasted longer than a re-quote
+ * could. The rows are never faked in the meantime — an empty book renders as
+ * empty, just silently.
+ */
+const EMPTY_CONFIRM_MS = 600;
+
+/** True once `value` has been continuously true for `delayMs`. */
+function useSettled(value: boolean, delayMs: number) {
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    if (!value) {
+      setSettled(false);
+      return;
+    }
+    const id = setTimeout(() => setSettled(true), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+
+  return settled;
+}
 
 function accumulate(levels: DepthLevel[], limit: number): Row[] {
   const rows: Row[] = [];
@@ -206,6 +254,9 @@ export function OrderBook({
   const unavailable = depth === null && down;
   const connecting = depth === null && !down;
   const empty = depth !== null && bids.length === 0 && asks.length === 0;
+  // See EMPTY_CONFIRM_MS: the ladder draws the empty book straight away, the
+  // sentence about it waits until the emptiness is not just a re-quote gap.
+  const showEmpty = useSettled(empty, EMPTY_CONFIRM_MS);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -222,9 +273,9 @@ export function OrderBook({
             <SkeletonRows rows={rows} columns={3} className="px-2" />
           </SkeletonRegion>
         )}
-        {asks.map((row) => (
+        {asks.map((row, index) => (
           <LevelRow
-            key={`a-${row.price}`}
+            key={`a-${index}`}
             row={row}
             max={max}
             side="ask"
@@ -259,7 +310,7 @@ export function OrderBook({
           // and two live regions for one ladder would read it out twice.
           <SkeletonRows rows={rows} columns={3} className="px-2" />
         )}
-        {empty && (
+        {showEmpty && (
           <EmptyState
             size="sm"
             icon={LayersIcon}
@@ -278,9 +329,9 @@ export function OrderBook({
             description="The market data feed is not reachable. Reconnecting — the ladder will fill in as soon as it answers."
           />
         )}
-        {bids.map((row) => (
+        {bids.map((row, index) => (
           <LevelRow
-            key={`b-${row.price}`}
+            key={`b-${index}`}
             row={row}
             max={max}
             side="bid"

@@ -22,6 +22,21 @@ const EnvSchema = z.object({
    * are worse than refusing to start.
    */
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+  /**
+   * The publish cadence for market state, in milliseconds.
+   *
+   * The engine broadcasts a full 20-level book on every order event, so a
+   * market maker re-quoting five rungs a side emits ~20 depth frames inside a
+   * few hundred milliseconds and then nothing until it re-quotes again. That
+   * burst carries no more information than its last frame — depth is a
+   * snapshot, not a delta — but it costs every subscriber a render per frame,
+   * which is what made the ladder arrive in one lurch and then sit still.
+   *
+   * So market state is published on a fixed cadence instead of per event, the
+   * way a real venue's depth stream is (Binance: 100ms / 1000ms). Zero disables
+   * the coalescing and restores one publish per engine reply.
+   */
+  MARKET_STATE_INTERVAL_MS: z.coerce.number().int().nonnegative().default(100),
 });
 
 type Env = z.infer<typeof EnvSchema>;

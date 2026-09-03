@@ -110,6 +110,7 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 globalThis.WebSocket = FakeSocket as any;
 
 beforeEach(() => {
+  renders = 0;
   FakeSocket.instances = [];
   snapshots = [];
   depthRequests = 0;
@@ -126,8 +127,16 @@ beforeEach(() => {
  */
 void realFetch;
 
+/**
+ * Renders of the context consumer, which is what the coalescing is about: the
+ * terminal reads this context at its root, so one render here is one render of
+ * the chart, the ticket, the tabs and the ladder together.
+ */
+let renders = 0;
+
 function Probe() {
   const feed = useMarketFeed();
+  renders++;
   return (
     <div>
       <span data-testid="source">{feed.source}</span>
@@ -147,6 +156,54 @@ const text = (id: string) => screen.getByTestId(id).textContent;
  * snapshot fetch and the state update lands a microtask later.
  */
 const drive = (fn: () => void) => act(async () => { fn(); });
+
+/**
+ * Runs a test with `requestAnimationFrame` under its control.
+ *
+ * The provider paces market-data frames onto the next animation frame, so a
+ * test that wants to observe the pacing has to own the paint. happy-dom's own
+ * rAF is a `setImmediate`, which flushes on its own between tasks — fine for
+ * every other test in this file, useless for asserting that a burst did NOT
+ * render yet.
+ *
+ * Scoped to the test that needs it and restored afterwards, rather than
+ * installed at module level like the socket and `fetch` stubs: those are inert
+ * for other suites, a queue that never drains would not be — Radix schedules
+ * real work on rAF.
+ */
+async function withManualFrames(
+  body: (paint: () => Promise<void>) => Promise<void>,
+) {
+  const realRequest = globalThis.requestAnimationFrame;
+  const realCancel = globalThis.cancelAnimationFrame;
+  const queue = new Map<number, FrameRequestCallback>();
+  let nextId = 1;
+
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    const id = nextId++;
+    queue.set(id, callback);
+    return id;
+  }) as typeof requestAnimationFrame;
+  globalThis.cancelAnimationFrame = ((id: number) => {
+    queue.delete(id);
+  }) as typeof cancelAnimationFrame;
+
+  /** One paint: everything queued when it starts, and nothing queued during it. */
+  const paint = async () => {
+    const due = [...queue.values()];
+    queue.clear();
+    await act(async () => {
+      for (const callback of due) callback(0);
+    });
+  };
+
+  try {
+    await body(paint);
+  } finally {
+    globalThis.requestAnimationFrame = realRequest;
+    globalThis.cancelAnimationFrame = realCancel;
+  }
+}
 
 const renderFeed = (market = SOL, staleAfterMs?: number) =>
   render(
@@ -336,6 +393,92 @@ describe("MarketFeedProvider", () => {
     await drive(() => FakeSocket.instances[1]!.accept());
     await waitFor(() => expect(text("bid")).toBe("220"));
     expect(FakeSocket.open).toHaveLength(1);
+  });
+
+  it("coalesces a burst of frames into a single render", async () => {
+    /**
+     * The reason the pacing exists.
+     *
+     * The engine publishes a full 20-level book on every order event, so the
+     * market maker replacing a ladder lands a clump of frames inside a few
+     * milliseconds — each in its own task, as the socket delivers them.
+     * Rendering each one separately is work the browser can never show, it
+     * paints once a frame regardless; and because the terminal reads this
+     * context at its root, each of those renders was the whole terminal.
+     *
+     * Frames are sent in SEPARATE tasks here, and that is the point. React
+     * already batches updates that share a task, so a burst delivered inside
+     * one `act` would collapse to a single render with or without this change
+     * and prove nothing. Under `withManualFrames` the flush only happens when
+     * the test paints, which is what makes the assertion real.
+     *
+     * Every frame is still applied. What is paced is how often React is told,
+     * so both halves are asserted: one render, carrying the NEWEST frame.
+     */
+    snapshots = [depth(SOL.id, 1, "100")];
+
+    await withManualFrames(async (paint) => {
+      renderFeed();
+      await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+      const socket = FakeSocket.instances[0]!;
+      await act(async () => socket.accept());
+      await waitFor(() => expect(text("source")).toBe("live"));
+
+      const before = renders;
+      for (const [id, bid] of [[2, "102"], [3, "103"], [4, "104"], [5, "105"]] as const) {
+        await act(async () => {
+          socket.send({ feed: "depth", marketId: SOL.id, data: depth(SOL.id, id, bid) });
+        });
+      }
+
+      // Four frames in, four tasks, and the DOM has not been touched.
+      expect(renders).toBe(before);
+      expect(text("bid")).toBe("100");
+
+      await paint();
+
+      expect(renders - before).toBe(1);
+      expect(text("bid")).toBe("105");
+      expect(text("update-id")).toBe("5");
+    });
+  });
+
+  it("applies every frame in the burst, not just the last one", async () => {
+    // Coalescing is about the render, never about the data. A frame the guard
+    // in `applyFrame` would have rejected must still be rejected, and one it
+    // would have applied must still be applied — dropping frames on the floor
+    // would make the tape lossy and the book non-monotonic.
+    snapshots = [depth(SOL.id, 1, "100")];
+    renderFeed();
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    const socket = FakeSocket.instances[0]!;
+    await drive(() => socket.accept());
+    await waitFor(() => expect(text("source")).toBe("live"));
+
+    await act(async () => {
+      // Newest first, then two that are older than it. The guard must keep the
+      // newest, and it can only do that if it saw all three.
+      socket.send({ feed: "depth", marketId: SOL.id, data: depth(SOL.id, 9, "109") });
+      socket.send({ feed: "depth", marketId: SOL.id, data: depth(SOL.id, 7, "107") });
+      socket.send({ feed: "depth", marketId: SOL.id, data: depth(SOL.id, 8, "108") });
+    });
+
+    await waitFor(() => expect(text("update-id")).toBe("9"));
+    expect(text("bid")).toBe("109");
+  });
+
+  it("commits a lifecycle transition without waiting for a frame", async () => {
+    // Frames are paced; `connecting → live → reconnecting` is not. The status
+    // dot has to be able to contradict the ladder the moment the socket drops,
+    // and a market switch has to clear the previous book in the same tick.
+    snapshots = [depth(SOL.id, 10, "110")];
+    renderFeed();
+    await waitFor(() => expect(FakeSocket.instances).toHaveLength(1));
+    await drive(() => FakeSocket.instances[0]!.accept());
+    await waitFor(() => expect(text("source")).toBe("live"));
+
+    await drive(() => FakeSocket.instances[0]!.drop());
+    expect(text("source")).toBe("reconnecting");
   });
 
   it("closes the socket on unmount and stops reconnecting", async () => {

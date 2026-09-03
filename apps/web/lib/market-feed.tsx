@@ -126,10 +126,51 @@ export function MarketFeedProvider({
 
   useEffect(() => {
     const machine = { current: initialMachine() };
+    let frameHandle: number | null = null;
+
+    /**
+     * A lifecycle transition: opened, snapshotted, dropped, retrying.
+     *
+     * Committed synchronously, and it cancels any frame flush waiting behind
+     * it. These are rare, they are what the status dot reads, and a market
+     * switch in particular has to clear the previous book in the same tick it
+     * tears the socket down — a ladder that keeps rendering SOL for a frame
+     * after the user asked for BTC is the one thing worse than a slow ladder.
+     */
     const commit = (next: Machine) => {
       machine.current = next;
+      if (frameHandle !== null) {
+        cancelAnimationFrame(frameHandle);
+        frameHandle = null;
+      }
       setState(next.state);
     };
+
+    /**
+     * A market-data frame. Coalesced to at most one render per animation frame.
+     *
+     * The machine is advanced synchronously — every frame is still applied, in
+     * order, and `machine.current` is always the newest truth — but React is
+     * told once per paint. Frames arrive in bursts (the engine broadcasts a
+     * full book per order event, so a maker re-quoting a ladder lands a clump
+     * of them inside a few milliseconds) and rendering each one separately buys
+     * nothing: the browser paints 60 times a second whatever we do, so the
+     * renders in between were work whose output no one could ever see.
+     *
+     * `requestAnimationFrame` and not a timer, because the paint is exactly
+     * what we are pacing against. It also stops in a hidden tab, which is the
+     * correct behaviour for free: the machine keeps applying frames, and the
+     * flush that was pending happens when the tab comes back.
+     */
+    const commitFrame = (next: Machine) => {
+      machine.current = next;
+      if (frameHandle !== null) return;
+      frameHandle = requestAnimationFrame(() => {
+        frameHandle = null;
+        setState(machine.current.state);
+      });
+    };
+
     commit(initialMachine());
     setStale(false);
 
@@ -231,7 +272,7 @@ export function MarketFeedProvider({
         const frame = parseFrame(String(event.data), market.id);
         // A malformed or irrelevant frame is dropped, never a teardown.
         if (!frame) return;
-        commit(onFrame(machine.current, frame, Date.now()));
+        commitFrame(onFrame(machine.current, frame, Date.now()));
       };
 
       socket.onerror = fail;
@@ -267,6 +308,7 @@ export function MarketFeedProvider({
       stopped = true;
       document.removeEventListener("visibilitychange", onVisibility);
       if (hiddenTimer) clearTimeout(hiddenTimer);
+      if (frameHandle !== null) cancelAnimationFrame(frameHandle);
       teardown();
     };
   }, [market.id]);
@@ -275,6 +317,10 @@ export function MarketFeedProvider({
    * Staleness, driven by the arrival of frames rather than by polling: each
    * frame re-arms one timer. `lastFrameAt` only changes when something actually
    * arrives, so this effect does not re-run on an unrelated render.
+   *
+   * It re-arms on the coalesced flush rather than on the frame itself, which
+   * moves the deadline by at most one animation frame against a five second
+   * threshold.
    */
   useEffect(() => {
     setStale(false);

@@ -74,9 +74,28 @@ describe("the ladder", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("says the book is EMPTY only when the server said so", () => {
+  it("says the book is EMPTY only when the server said so", async () => {
     ladder(empty, "live");
-    expect(screen.getByText(/no resting orders/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no resting orders/i, {}, { timeout: 2_000 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not announce an empty book that is only a re-quote gap", () => {
+    /**
+     * The market maker cancels its whole ladder before placing the
+     * replacement, so the book is genuinely empty for the width of those round
+     * trips and the engine broadcasts it — once every cycle, all day. The
+     * ladder draws that empty book immediately, because it is true; the
+     * sentence explaining it waits, because "no resting orders" describes a
+     * market and this is a moment. It used to mount and unmount on every
+     * cycle, which is a large part of what read as flicker.
+     */
+    ladder(empty, "live");
+    expect(screen.queryByText(/no resting orders/i)).toBeNull();
+    // Nothing invented in the meantime: no levels, and no error either.
+    expect(screen.queryByText("100.00")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -93,6 +112,51 @@ describe("the ladder", () => {
     ladder(book, "live");
     expect(screen.getByText("100.00")).toBeInTheDocument();
     expect(screen.getByText("100.50")).toBeInTheDocument();
+  });
+
+  it("updates a row in place when the whole ladder re-prices", () => {
+    /**
+     * The flicker, reduced to its mechanism.
+     *
+     * Rows were keyed by price, so a maker moving its ladder — which is the
+     * ordinary case, every cycle — changed every key at once and React threw
+     * away all twenty-odd buttons and built new ones. Keyed by rank they are
+     * the same elements with new text in them.
+     *
+     * Asserted by NODE IDENTITY rather than by counting renders: the DOM node
+     * surviving is precisely the property that stops the browser from tearing
+     * down and re-laying-out the ladder, and it is what a render count would
+     * only be a proxy for.
+     */
+    const view = ladder(book, "live");
+    const rowsBefore = screen.getAllByRole("button");
+    expect(rowsBefore).toHaveLength(2);
+
+    const moved: Depth = {
+      ...book,
+      lastUpdateId: 3,
+      bids: [["101.00", "6"]],
+      asks: [["101.50", "3"]],
+    };
+    view.rerender(
+      <OrderBook
+        depth={moved}
+        lastPrice={null}
+        prevPrice={null}
+        change={null}
+        source="live"
+        market={SOL}
+        onPriceSelect={() => undefined}
+      />,
+    );
+
+    const rowsAfter = screen.getAllByRole("button");
+    expect(rowsAfter).toHaveLength(2);
+    // Same elements, new numbers — not new elements.
+    expect(rowsAfter[0]).toBe(rowsBefore[0]!);
+    expect(rowsAfter[1]).toBe(rowsBefore[1]!);
+    expect(screen.getByText("101.00")).toBeInTheDocument();
+    expect(screen.queryByText("100.00")).toBeNull();
   });
 });
 
