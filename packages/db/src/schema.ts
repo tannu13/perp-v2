@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -82,9 +83,32 @@ export const orders = pgTable("orders", {
     .$onUpdate(() => new Date()),
 });
 
-export const processedEvents = pgTable("processed_events", {
-  idempotencyKey: uuid("idempotency_key").primaryKey().notNull(),
-});
+/**
+ * The idempotency ledger for `apps/db-writer`.
+ *
+ * `checkProcessedEvents` inserts the correlation id inside the same transaction
+ * as the rows it guards, so a redelivered event fails on this primary key, the
+ * whole write rolls back, and `setup-comms.ts` recognises the `23505` and acks
+ * instead of retrying. The row IS the guard — there is no separate lookup.
+ *
+ * `createdAt` exists only so the table can be pruned. It grows at roughly two
+ * rows per order (~540/min with the market maker quoting three books) and the
+ * key is a bare uuid, so before this column there was no way to express "old
+ * enough that no consumer could still replay it" and the table could only be
+ * truncated with the stack down. See `prune-bots.ts` for the retention rule,
+ * which is not a matter of taste: delete a row while its stream entry can still
+ * be redelivered and the guard is gone.
+ */
+export const processedEvents = pgTable(
+  "processed_events",
+  {
+    idempotencyKey: uuid("idempotency_key").primaryKey().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  // The prune deletes by age across the whole table; without this it is a seq
+  // scan over millions of rows every fifteen minutes.
+  (t) => [index("processed_events_created_at_idx").on(t.createdAt)],
+);
 
 export type InsertOrderRecord = typeof orders.$inferInsert;
 export const InsertOrderSchema = createInsertSchema(orders);

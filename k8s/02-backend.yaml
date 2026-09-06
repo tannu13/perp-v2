@@ -4,6 +4,10 @@ metadata:
   name: backend
   namespace: perps-app
 spec:
+  # Safe at 2 only because APP_STAGE below is `prod`. Each pod then takes its
+  # own Redis consumer group and receives every engine reply; sharing one group
+  # deals each reply to exactly one pod, so a reply routinely lands on a pod
+  # that is not holding the caller and the original request times out.
   replicas: 2
   selector:
     matchLabels:
@@ -27,8 +31,11 @@ spec:
               value: "3000"
             - name: NODE_ENV
               value: development
+            # Gives each pod its own consumer group — see backend-comms.ts.
+            # `dev` shares one group across all pods, which silently breaks
+            # request/reply correlation at any replica count above 1.
             - name: APP_STAGE
-              value: dev
+              value: prod
             - name: SALT_ROUNDS
               value: "10"
             - name: JWT_SECRET

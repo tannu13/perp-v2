@@ -19,8 +19,37 @@ import {
 
 // register with the redis stream
 const RESPONSE_STREAM = env.ENGINE_RESPONSE_STREAM;
-const LISTENER_GROUP = env.LISTENER_GROUP;
-// td:: consumer name could be dynamic -- add that logic
+
+/**
+ * One consumer group per process — the thing that lets this service scale.
+ *
+ * A consumer group *divides* a stream between its members. Two ws-servers
+ * sharing `ws-server-group` would each be handed roughly half the engine
+ * replies, so every browser would see half the depth frames, half the fills,
+ * and a book that quietly disagrees with the engine. That is not a degraded
+ * feed, it is a wrong one, and nothing in the protocol would report it.
+ *
+ * Fan-out is a group per reader. `apps/backend` reached the same conclusion for
+ * the same reason (backend-comms.ts) — every replica must see every reply
+ * because only one of them holds the caller waiting on it.
+ *
+ * Dev keeps the fixed name. `bun --watch` restarts on a keystroke, and a fresh
+ * uuid each time would strand a group in Redis per save, each one holding the
+ * offsets of a process that no longer exists.
+ */
+const uniqueId = crypto.randomUUID();
+const LISTENER_GROUP =
+  env.APP_STAGE === "dev"
+    ? env.LISTENER_GROUP
+    : `${env.LISTENER_GROUP}-${uniqueId}`;
+
+/**
+ * Fixed, and that is now correct rather than a shortcut.
+ *
+ * The old `td::` here wanted a dynamic consumer name to tell replicas apart.
+ * With a group per process there is exactly one consumer in the group, so the
+ * name has nothing left to disambiguate — the group name carries the identity.
+ */
 const LISTENER_GROUP_CONSUMER = env.LISTENER_GROUP_CONSUMER;
 
 interface StreamProcessorConfig<TRaw, TParsed> {
@@ -46,8 +75,26 @@ export const setupComms = async ({
 
   await Promise.all([subscriber.connect()]);
 
+  /**
+   * `$` — a new group starts at the tail of the stream, not its head.
+   *
+   * This matters only because the group is now per process. Backend can create
+   * its group at `0` because a replayed reply finds no waiting resolver and is
+   * acked away; ws-server *publishes* whatever it reads. A group created at the
+   * head would broadcast the entire retained stream on boot — up to
+   * STREAM_MAXLEN, about an hour of depth frames at the market maker's rate —
+   * as fast as it can read, to whoever connects during the catch-up. The book
+   * would race through an hour of history and land on the truth, having shown
+   * every intermediate state first.
+   *
+   * A market-data feed has no use for history. The first frame a client sees
+   * should be the current book.
+   *
+   * BUSYGROUP is still tolerated: in dev the name is fixed, so the second boot
+   * onwards finds the group already there and keeps its stored offset.
+   */
   try {
-    await subscriber.xGroupCreate(RESPONSE_STREAM, LISTENER_GROUP, "0", {
+    await subscriber.xGroupCreate(RESPONSE_STREAM, LISTENER_GROUP, "$", {
       MKSTREAM: true,
     });
   } catch (err: any) {
@@ -273,5 +320,54 @@ export const setupComms = async ({
     });
   };
 
-  return { handlePendingEntries, listenToIncomingEvents };
+  /**
+   * Give the per-process group back to Redis on the way out.
+   *
+   * A group per replica means a group left behind per replica, and they do not
+   * expire: a service redeployed weekly for a year leaves fifty-two dead groups
+   * on the stream, each with its own pending-entries list, none of them ever
+   * read again. Trimming does not collect them — MAXLEN drops entries, not
+   * groups.
+   *
+   * Order matters. The listener is parked on `xReadGroup BLOCK 0`; destroying
+   * the group underneath it answers NOGROUP, which is not a connection error,
+   * so `runStreamLoop` would rightly refuse to swallow it and take the process
+   * down on the way out of the door. So the socket is destroyed first — the
+   * in-flight read then fails as a connection error, which the loop treats as a
+   * pause — and the group is dropped over a second, short-lived client.
+   *
+   * Only graceful exits clean up. A `SIGKILL`ed or OOM-killed replica still
+   * strands its group; this is a tidy-up, not a guarantee, and the counterpart
+   * is worth having only because the common case is a rolling deploy.
+   */
+  const shutdown = async () => {
+    if (env.APP_STAGE === "dev") return;
+
+    try {
+      subscriber.destroy();
+    } catch {
+      // Already gone. Nothing to do, and nothing that should stop the destroy.
+    }
+
+    const admin: RedisClientType = createClient(
+      redisClientOptions(env.REDIS_URL),
+    );
+    attachRedisLogging(admin, "ws-server shutdown");
+
+    try {
+      await admin.connect();
+      await admin.xGroupDestroy(RESPONSE_STREAM, LISTENER_GROUP);
+      console.log(`[ws-server] released consumer group ${LISTENER_GROUP}`);
+    } catch (err) {
+      // A group we could not drop is litter, not a failure to exit over.
+      console.warn(
+        `[ws-server] could not release consumer group ${LISTENER_GROUP}:`,
+        err instanceof Error ? err.message : err,
+      );
+    } finally {
+      admin.destroy();
+    }
+  };
+
+  return { handlePendingEntries, listenToIncomingEvents, shutdown };
 };

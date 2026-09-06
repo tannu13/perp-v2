@@ -13,6 +13,7 @@ import {
   attachRedisLogging,
   redisClientOptions,
   runStreamLoop,
+  streamTrim,
 } from "@repo/shared/redis-resilience";
 import { asTransportFailure } from "./transport-failure";
 
@@ -38,8 +39,20 @@ export const setupComms = async () => {
 
   await Promise.all([listenerClient.connect(), senderClient.connect()]);
 
+  /**
+   * `$` — a new group starts at the tail of the stream, not its head.
+   *
+   * The replay buys nothing. A reply is only useful to the process holding
+   * the caller waiting on it, in `promiseResolvers`; after a restart that map is
+   * empty and every replayed entry is parsed, missed, and acked. Correct, and
+   * pure cost.
+   *
+   * The pending-entries list is unaffected — `handlePendingEntries` claims by
+   * PEL, not by read offset, so a crashed dev process's unacked entries are
+   * still recovered.
+   */
   try {
-    await listenerClient.xGroupCreate(INCOMING_STREAM, LISTENER_GROUP, "0", {
+    await listenerClient.xGroupCreate(INCOMING_STREAM, LISTENER_GROUP, "$", {
       MKSTREAM: true,
     });
   } catch (err: any) {
@@ -149,11 +162,7 @@ export const setupComms = async () => {
         // resolve the promise, if available else short circuit
         if (correlationId) promiseResolvers.get(correlationId)?.(result.data);
 
-        await listenerClient.xAck(
-          INCOMING_STREAM,
-          LISTENER_GROUP,
-          message.id,
-        );
+        await listenerClient.xAck(INCOMING_STREAM, LISTENER_GROUP, message.id);
       }
     }
   };
@@ -204,11 +213,16 @@ export const setupComms = async () => {
       );
 
       senderClient
-        .xAdd(OUTGOING_STREAM, "*", {
-          correlationId,
-          type,
-          payload: JSON.stringify(payload),
-        })
+        .xAdd(
+          OUTGOING_STREAM,
+          "*",
+          {
+            correlationId,
+            type,
+            payload: JSON.stringify(payload),
+          },
+          streamTrim,
+        )
         .catch((err) => settle(() => reject(asTransportFailure(err))));
     });
   };
@@ -216,11 +230,41 @@ export const setupComms = async () => {
   /** Exposed for tests: proves the map does not grow across requests. */
   const pendingRequestCount = () => promiseResolvers.size;
 
+  /**
+   * Give the per-process group back to Redis on the way out.
+   *
+   * A group per replica is a group left behind per replica, and consumer groups
+   * do not expire. At `replicas: 2` that is two dead groups per deploy, each
+   * with its own pending-entries list, none of them read again. Trimming does
+   * not collect them — MAXLEN drops entries, not groups.
+   *
+   * Only graceful exits clean up. A SIGKILLed or OOM-killed replica still
+   * strands its group; this is a tidy-up, not a guarantee.
+   */
+  const shutdown = async () => {
+    if (env.APP_STAGE !== "dev") {
+      listenerClient.destroy();
+
+      try {
+        await senderClient.xGroupDestroy(INCOMING_STREAM, LISTENER_GROUP);
+        console.log(`[backend] released consumer group ${LISTENER_GROUP}`);
+      } catch (err) {
+        console.warn(
+          `[backend] could not release consumer group ${LISTENER_GROUP}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    senderClient.destroy();
+  };
+
   return {
     handlePendingEntries,
     listenToIncomingEvents,
     sendToEngineStream,
     pendingRequestCount,
+    shutdown,
   };
 };
 

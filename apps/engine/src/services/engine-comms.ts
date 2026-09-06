@@ -12,6 +12,7 @@ import {
   attachRedisLogging,
   redisClientOptions,
   runStreamLoop,
+  streamTrim,
 } from "@repo/shared/redis-resilience";
 
 // register with the redis stream
@@ -299,12 +300,17 @@ export const setupComms = async ({
     data?: unknown;
     error?: string;
   }) => {
-    await senderClient.xAdd(OUTGOING_STREAM, "*", {
-      correlationId,
-      ok: JSON.stringify(ok),
-      data: data ? JSON.stringify(data) : "",
-      error: error ? error : "",
-    });
+    await senderClient.xAdd(
+      OUTGOING_STREAM,
+      "*",
+      {
+        correlationId,
+        ok: JSON.stringify(ok),
+        data: data ? JSON.stringify(data) : "",
+        error: error ? error : "",
+      },
+      streamTrim,
+    );
   };
 
   return { handlePendingEntries, listenToIncomingEvents, runRecovery };

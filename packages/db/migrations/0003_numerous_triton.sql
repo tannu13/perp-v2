@@ -1,0 +1,2 @@
+ALTER TABLE "processed_events" ADD COLUMN "created_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE INDEX "processed_events_created_at_idx" ON "processed_events" USING btree ("created_at");

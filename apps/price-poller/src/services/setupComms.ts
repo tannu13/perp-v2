@@ -5,6 +5,7 @@ import {
   attachRedisLogging,
   isRedisConnectionError,
   redisClientOptions,
+  streamTrim,
 } from "@repo/shared/redis-resilience";
 
 const OUTGOING_STREAM = env.OUTGOING_STREAM;
@@ -29,11 +30,16 @@ export const setupComms = async () => {
   ) => {
     const correlationId = crypto.randomUUID();
     try {
-      await senderClient.xAdd(OUTGOING_STREAM, "*", {
-        correlationId,
-        type,
-        payload: JSON.stringify(payload),
-      });
+      await senderClient.xAdd(
+        OUTGOING_STREAM,
+        "*",
+        {
+          correlationId,
+          type,
+          payload: JSON.stringify(payload),
+        },
+        streamTrim,
+      );
       if (outage > 0) {
         console.log(`redis is back — dropped ${outage} spot ticks`);
         outage = 0;

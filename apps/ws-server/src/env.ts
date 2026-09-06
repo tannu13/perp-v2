@@ -2,15 +2,31 @@ import z from "zod";
 
 const EnvSchema = z.object({
   WS_SERVER_PORT: z.coerce.number().positive().default(3010),
+  /**
+   * Which half of the consumer-group behaviour below applies.
+   *
+   * `dev` keeps LISTENER_GROUP exactly as given, so a `bun --watch` restart
+   * rejoins the group it left. `prod` suffixes it per process, which is what
+   * lets this service run more than one replica — see setup-comms.ts.
+   *
+   * Defaulting to `dev` means a deployment that forgets to set this runs with
+   * the shared group, which is correct for one replica and silently halves the
+   * feed for two. `k8s/08-ws-server.yaml` sets it.
+   */
+  APP_STAGE: z.enum(["dev", "prod"]).default("dev"),
   REDIS_URL: z.string().min(1).startsWith("redis://"),
   ENGINE_RESPONSE_STREAM: z
     .string()
     .min(1)
     .default("engine-to-backend-trade-comms"),
+  /**
+   * The consumer group's base name. In `prod` it is a prefix, not the whole
+   * name — a per-process suffix is appended.
+   */
   LISTENER_GROUP: z.string().min(1).default("ws-server-group"),
   LISTENER_GROUP_CONSUMER: z.string().min(1).default("ws-server"),
   /**
-   * The same secret the backend signs with (§6.14).
+   * The same secret the backend signs with.
    *
    * ws-server verifies WebSocket tickets with it and mints nothing, so this
    * process only ever needs the verify half — but the algorithm is HS256, so

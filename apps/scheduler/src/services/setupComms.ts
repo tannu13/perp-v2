@@ -4,6 +4,7 @@ import env from "../env";
 import {
   attachRedisLogging,
   redisClientOptions,
+  streamTrim,
 } from "@repo/shared/redis-resilience";
 
 export const setupComms = async () => {
@@ -26,11 +27,16 @@ export const setupComms = async () => {
 
   const sendToEngineStream = async (type: TEngineSupportedTypes) => {
     const correlationId = crypto.randomUUID();
-    await senderClient.xAdd(env.ENGINE_ON_STREAM, "*", {
-      correlationId,
-      type,
-      payload: JSON.stringify({ now: new Date().toISOString() }),
-    });
+    await senderClient.xAdd(
+      env.ENGINE_ON_STREAM,
+      "*",
+      {
+        correlationId,
+        type,
+        payload: JSON.stringify({ now: new Date().toISOString() }),
+      },
+      streamTrim,
+    );
   };
 
   return { rediClient: schedulerClient, sendToEngineStream };

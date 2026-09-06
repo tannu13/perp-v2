@@ -4,6 +4,10 @@ metadata:
   name: ws-server
   namespace: perps-app
 spec:
+  # Safe to raise now. Each pod takes its own Redis consumer group, so every
+  # replica receives every engine reply instead of the pods splitting the feed
+  # between them. That behaviour is switched on by APP_STAGE=prod below — with
+  # APP_STAGE=dev this MUST stay at 1.
   replicas: 1
   selector:
     matchLabels:
@@ -21,6 +25,11 @@ spec:
           env:
             - name: WS_SERVER_PORT
               value: "3010"
+            # Gives this pod its own consumer group. Without it the service
+            # defaults to `dev`, shares one group across pods, and each browser
+            # gets a fraction of the depth frames.
+            - name: APP_STAGE
+              value: prod
             - name: REDIS_URL
               value: redis://host.minikube.internal:6379
             - name: ENGINE_RESPONSE_STREAM
