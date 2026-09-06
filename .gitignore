@@ -39,3 +39,6 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Filled-in copies of the k8s secret template — real credentials, never committed
+k8s/*-secrets.yaml

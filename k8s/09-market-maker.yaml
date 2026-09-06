@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-maker
+  namespace: perps-app
+spec:
+  # One, and only ever one. Both bots log in as a single account each, so a
+  # second replica runs the same requote loop against the same book: the two
+  # ladders cancel each other's rungs, and each pod sees only its own fills
+  # when it checks MM_MAX_INVENTORY_NOTIONAL, so the real position is double
+  # what either believes it is holding.
+  #
+  # `kubectl scale deploy/market-maker --replicas=0` is therefore the kill
+  # switch for a cold-book demo. MM_ENABLED stays a turbo-only concern.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-maker
+  template:
+    metadata:
+      labels:
+        app: market-maker
+    spec:
+      containers:
+        - name: market-maker
+          image: tannnu13/perps-v2-market-maker:v1
+          # No ports and no Service: nothing connects to this, and unlike every
+          # other service here it holds no Redis stream — it is an ordinary API
+          # client, so it reaches the stack the way a browser would.
+          env:
+            - name: API_URL
+              value: "http://backend-service:3000"
+            - name: WS_URL
+              value: "ws://ws-server-service:3010"
+
+            # Each bot signs in first and falls back to signing up, so these
+            # are both the credentials of an existing account and the ones a
+            # fresh cluster creates it with. Change one after the account
+            # exists and boot fails twice over: the sign-in is rejected and the
+            # sign-up collides with the username already taken.
+            - name: MM_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: perps-secrets
+                  key: MM_PASSWORD
+            - name: TAKER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: perps-secrets
+                  key: TAKER_PASSWORD
+
+            # Everything below is a tuning default from apps/market-maker/src/env.ts,
+            # restated only where the cluster wants a different number than a
+            # laptop does. Quoting every market GET /markets returns.
+            - name: MM_ENABLED
+              value: "true"
+            - name: TAKER_ENABLED
+              value: "true"

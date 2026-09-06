@@ -28,4 +28,7 @@ spec:
             - name: LISTENER_GROUP_CONSUMER
               value: db-writer
             - name: DATABASE_URL
-              value: postgresql://perps_user:mysecretpasswordfordb@host.minikube.internal:5432/perps_db
+              valueFrom:
+                secretKeyRef:
+                  name: perps-secrets
+                  key: DATABASE_URL

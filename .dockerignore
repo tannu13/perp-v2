@@ -1,0 +1,30 @@
+# Without this every `COPY apps/<x> ./apps/<x>` drags the host's node_modules,
+# build output and .env into the image — larger, slower to pull, and in the
+# case of .env a credential baked into a layer.
+node_modules
+**/node_modules
+.next
+**/.next
+.turbo
+**/.turbo
+dist
+build
+out
+coverage
+**/*.tsbuildinfo
+
+.git
+.github
+k8s
+docs
+*.md
+
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+
+test-results
+**/test-results
+playwright-report
+**/playwright-report

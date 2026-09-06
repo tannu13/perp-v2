@@ -7,18 +7,38 @@ import {
 } from "@aws-sdk/client-s3";
 import env from "../env";
 
-const isDev = env.NODE_ENV === "development";
 const BACKUP_FILE_NAME = "store-backup-latest.json";
+
+// MinIO authenticates with a static key pair and needs path-style addressing;
+// real S3 needs neither. Both are decided by whether an endpoint was configured,
+// not by NODE_ENV, so a container that is handed no endpoint always talks to S3.
+const usingMinio = Boolean(env.MINIO_ENDPOINT);
+const staticCredentials =
+  env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
+    ? {
+        accessKeyId: env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      }
+    : undefined;
+
 export const createUploader = () => {
   const s3Client = new S3Client({
     region: env.AWS_REGION,
-    credentials: {
-      accessKeyId: env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    },
-    endpoint: isDev ? env.MINIO_ENDPOINT : undefined,
-    forcePathStyle: isDev,
+    // Spread, not `credentials: undefined`. An explicit key on this object —
+    // even holding undefined — wins over the SDK's default provider chain, so
+    // passing one in AWS blocks the instance/task role the engine is meant to
+    // use and every call fails unsigned.
+    ...(staticCredentials ? { credentials: staticCredentials } : {}),
+    ...(usingMinio
+      ? { endpoint: env.MINIO_ENDPOINT, forcePathStyle: true }
+      : {}),
   });
+
+  console.log(
+    `[engine] S3 target=${usingMinio ? `MinIO (${env.MINIO_ENDPOINT})` : "AWS S3"} ` +
+      `bucket=${env.AWS_BUCKET_NAME} region=${env.AWS_REGION} ` +
+      `credentials=${staticCredentials ? "static key pair" : "default chain (IAM role)"}`,
+  );
 
   const uploadToS3 = async (payload: any, destinationFileName: string) => {
     try {

@@ -33,11 +33,25 @@ spec:
               value: engine
             - name: AWS_REGION
               value: ap-south-1
+            # `optional: true` so an AWS deploy can ship a Secret without
+            # these keys at all and let the SDK's default chain reach the
+            # instance/task role. See apps/engine/src/env.ts.
             - name: AWS_ACCESS_KEY_ID
-              value: fake-local-key
+              valueFrom:
+                secretKeyRef:
+                  name: perps-secrets
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
             - name: AWS_SECRET_ACCESS_KEY
-              value: fake-local-secret
+              valueFrom:
+                secretKeyRef:
+                  name: perps-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
             - name: AWS_BUCKET_NAME
               value: s30-perps-store-backups-bucket-410940411202-ap-south-1-an
+            # Local MinIO. Delete this block (and set NODE_ENV=production
+            # above) for a deploy that should reach real S3 — its presence is
+            # what selects the MinIO client.
             - name: MINIO_ENDPOINT
               value: http://host.minikube.internal:9000
