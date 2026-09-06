@@ -32,8 +32,27 @@ spec:
               value: "redis://host.minikube.internal:6379"
             - name: APP_PORT
               value: "3000"
+            # Not cosmetic here, and the only thing this service reads it
+            # for: session-cookie.ts gates `Secure` and the `__Host-` prefix on
+            # it. Under `development` the session cookie ships without either,
+            # which on a domain shared with anything else means a sibling can
+            # overwrite it. Requires TLS to be terminated in front of this —
+            # a `Secure` cookie set over plain http is simply dropped, so a
+            # minikube deploy reached over http needs this back at
+            # `development` (see the ingress).
             - name: NODE_ENV
-              value: development
+              value: production
+            # Browser origins allowed to call this API. No wildcard — CORS
+            # forbids `*` alongside credentials, and this API only answers with
+            # credentials. Without this the schema default is localhost:3020
+            # and every request from the deployed frontend is rejected by
+            # verify-origin.ts with ORIGIN_NOT_ALLOWED.
+            #
+            # The frontend is on CloudFront, not in this cluster, so this is
+            # the CDN's hostname — and it must match the origin the browser
+            # sends exactly: scheme included, no trailing slash.
+            - name: CORS_ORIGINS
+              value: "https://web.perps.tanujpant.com"
             # Gives each pod its own consumer group — see backend-comms.ts.
             # `dev` shares one group across all pods, which silently breaks
             # request/reply correlation at any replica count above 1.

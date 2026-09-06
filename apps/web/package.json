@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack --port 3020",
     "build": "next build",
-    "start": "next start --port 3020",
+    "start": "bunx --bun serve out --listen 3020",
     "lint": "next lint",
     "check-types": "tsc --noEmit",
     "test": "bun test",

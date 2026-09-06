@@ -8,13 +8,26 @@ import { SkeletonRegion } from "@/components/ui";
 /**
  * Gates a route on a signed-in session.
  *
- * This replaces the middleware guard, which cannot work any more: the session
- * cookie is host-only on the API's domain, so nothing running on this app's
- * origin — middleware or Server Component — can see it. See `middleware.ts`.
+ * This is where route protection lives, and the only place it can. The session
+ * cookie belongs to the API host (`api.example.com`), not to this app's origin
+ * — that is what makes it host-only and immune to a sibling subdomain. The
+ * consequence is that neither middleware nor a Server Component could see it:
+ * they run on a different host and the browser never sends it there. Under
+ * `output: export` there is no server to run them on at all, but the guard was
+ * already client-side before that, for this reason rather than that one.
+ *
+ * The trade-off is honest: a protected route paints one loading frame before
+ * redirecting, where middleware could have redirected before any HTML was
+ * sent. Nothing is exposed by that frame — it renders no account data, because
+ * there is none to render until `GET /me` succeeds.
+ *
+ * The alternative — having the frontend also set a readable "signed in" hint
+ * cookie on its own origin purely so a guard could redirect earlier — was
+ * rejected: it is a second source of truth about auth state that can disagree
+ * with the real one, in exchange for saving one frame.
  *
  * Renders a skeleton rather than null while the session probe is in flight, so
- * a slow answer looks like loading rather than a blank page. It renders no
- * account data at any point: there is none until `GET /me` succeeds.
+ * a slow answer looks like loading rather than a blank page.
  */
 export function RequireSession({ children }: { children: React.ReactNode }) {
   const { status, signingOut, expiredCount } = useSession();

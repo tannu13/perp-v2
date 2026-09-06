@@ -1,26 +1,70 @@
+# Host-based, one hostname per service.
+#
+# This replaced a path-based ingress (`/api(/|$)(.*)` with
+# `rewrite-target: /$2`) that stripped the prefix before proxying. Routing on
+# the Host header means each service is reached at `/` and nothing needs
+# rewriting, which also retires that annotation — it applied to every path in
+# the Ingress carrying it, so a new rule was always one capture group away from
+# silently rewriting itself to `/`.
+#
+# The frontend is NOT here. It is static files on S3 behind CloudFront
+# (see ops/web-cloudfront.md); only the two stateful services are in-cluster.
+#
+# TLS is not optional now that backend runs with NODE_ENV=production: the
+# session cookie carries `Secure`, and a `Secure` cookie set over plain http is
+# discarded by the browser. Two ways to hold up the certificate:
+#
+#   - ingress-nginx terminates it, from the `perps-tls` Secret below. Issue it
+#     with cert-manager (a ClusterIssuer plus an annotation on this object) and
+#     the Secret is created and renewed for you.
+#   - The load balancer terminates it, and this drops the `tls:` block. On EKS
+#     that means the AWS Load Balancer Controller, `ingressClassName: alb`, and
+#     an ACM certificate ARN in an annotation.
+#
+# Either way the certificate must cover BOTH names below. A wildcard matches
+# exactly one label, so `*.tanujpant.com` does not cover them — it has to be
+# `*.perps.tanujpant.com`, and that in turn does not cover a bare
+# `perps.tanujpant.com` if you ever add one.
+#
+# Locally there is no such DNS. Point the names at the cluster by hand:
+#
+#   echo "$(minikube ip) api.perps.tanujpant.com ws.perps.tanujpant.com" \
+#     | sudo tee -a /etc/hosts
+#
+# and note that over plain http the session cookie will not be set at all
+# unless backend's NODE_ENV goes back to `development`.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: perps-app-ingress
   namespace: perps-app
   annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Long-lived by design: a market-data socket stays open for as long as the
+    # tab does, and the default 60s read timeout would cut it hourly.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.perps.tanujpant.com
+        - ws.perps.tanujpant.com
+      secretName: perps-tls
   rules:
-    - http:
+    - host: api.perps.tanujpant.com
+      http:
         paths:
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: backend-service
                 port:
                   number: 3000
-          - path: /ws
+    - host: ws.perps.tanujpant.com
+      http:
+        paths:
+          - path: /
             pathType: Prefix
             backend:
               service:

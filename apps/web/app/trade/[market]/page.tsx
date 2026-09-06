@@ -4,6 +4,14 @@ import { MARKETS, marketBySlug } from "@/lib/markets";
 import { Terminal } from "@/components/terminal/terminal";
 import { RequireSession } from "@/lib/auth/require-session";
 
+/**
+ * Every market is known at build time, and under `output: export` there is no
+ * server left to render one that is not. A slug outside this list never reaches
+ * `notFound()` below — CloudFront answers 404 first — so the check survives as
+ * a build-time assertion that MARKETS and this route agree.
+ */
+export const dynamicParams = false;
+
 export function generateStaticParams() {
   return MARKETS.map((m) => ({ market: m.slug }));
 }
